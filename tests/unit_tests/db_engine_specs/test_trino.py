@@ -426,6 +426,7 @@ def test_get_extra_table_metadata(mocker: MockerFixture) -> None:
         return_value=[{"column_names": ["ds", "hour"], "name": "partition"}]
     )
     db_mock.get_extra = Mock(return_value={})
+    db_mock.get_dialect = Mock(return_value=TrinoDialect())
     db_mock.has_view = Mock(return_value=None)
     db_mock.get_df = Mock(return_value=pd.DataFrame({"ds": ["01-01-19"], "hour": [1]}))
     result = TrinoEngineSpec.get_extra_table_metadata(
