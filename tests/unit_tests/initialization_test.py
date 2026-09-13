@@ -161,6 +161,54 @@ class TestSupersetAppInitializer:
         # Assert that sync_config_to_db was called on the app
         mock_app.sync_config_to_db.assert_called_once()
 
+    @patch("superset.initialization.logger")
+    def test_init_app_logs_starting_server_after_logging_configured(
+        self, mock_logger: MagicMock
+    ) -> None:
+        mock_app = MagicMock()
+        mock_app.config = {}
+        app_initializer = SupersetAppInitializer(mock_app)
+
+        call_order: list[str] = []
+        mock_logger.info.side_effect = lambda msg, *args: call_order.append(msg)
+
+        step_names = [
+            "pre_init",
+            "check_secret_key",
+            "configure_session",
+            "configure_feature_flags",
+            "check_guest_token_secret",
+            "check_websocket_secret",
+            "check_encryption_engine",
+            "configure_db_encrypt",
+            "setup_db",
+            "check_and_warn_database_connection",
+            "configure_celery",
+            "enable_profiling",
+            "setup_event_logger",
+            "setup_bundle_manifest",
+            "register_blueprints",
+            "configure_wtf",
+            "configure_middlewares",
+            "configure_cache",
+            "set_db_default_isolation",
+            "configure_sqlglot_dialects",
+            "configure_extra_post_processing_ops",
+            "init_app_in_ctx",
+            "setup_soft_delete_listener",
+            "post_init",
+        ]
+        with patch.multiple(
+            app_initializer,
+            configure_logging=MagicMock(
+                side_effect=lambda: call_order.append("configure_logging")
+            ),
+            **{name: MagicMock() for name in step_names},
+        ):
+            app_initializer.init_app()
+
+        assert call_order[:2] == ["configure_logging", "Starting Server"]
+
     def test_database_uri_lazy_property(self):
         """Test database_uri property uses lazy initialization with smart caching."""
         # Setup

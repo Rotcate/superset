@@ -1329,6 +1329,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         self.configure_session()
         # Configuration of logging must be done first to apply the formatter properly
         self.configure_logging()
+        logger.info("Starting Server")
         # Configuration of feature_flags must be done first to allow init features
         # conditionally
         self.configure_feature_flags()
