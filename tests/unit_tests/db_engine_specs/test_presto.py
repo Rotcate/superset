@@ -325,6 +325,7 @@ def test_get_create_view_returns_view_definition() -> None:
     from superset.db_engine_specs.presto import PrestoEngineSpec
 
     database = mock.MagicMock()
+    database.get_dialect.return_value = PrestoDialect()
     cursor = database.get_raw_connection().__enter__().cursor()
     cursor.fetchall.return_value = [["CREATE VIEW v AS SELECT 1", "b"], ["d"]]
 
@@ -336,18 +337,25 @@ def test_get_create_view_returns_view_definition() -> None:
 @pytest.mark.parametrize(
     "schema,table,expected_sql",
     [
-        pytest.param("s", "v", "SHOW CREATE VIEW s.v", id="simple"),
+        pytest.param("s", "v", 'SHOW CREATE VIEW "s"."v"', id="simple"),
         pytest.param(
             "analytics",
             "daily_users",
-            "SHOW CREATE VIEW analytics.daily_users",
+            'SHOW CREATE VIEW "analytics"."daily_users"',
             id="schema_qualified",
         ),
         pytest.param(
             "Raw_2024",
             "Daily_Active_Users_v2",
-            "SHOW CREATE VIEW Raw_2024.Daily_Active_Users_v2",
+            'SHOW CREATE VIEW "Raw_2024"."Daily_Active_Users_v2"',
             id="mixed_case_digits_underscores",
+        ),
+        pytest.param(
+            "my_schema",
+            'evil" UNION SELECT secret FROM other.table--',
+            'SHOW CREATE VIEW "my_schema"."evil"" UNION SELECT secret '
+            'FROM other.table--"',
+            id="injected_identifier_is_quoted",
         ),
     ],
 )
@@ -359,6 +367,7 @@ def test_get_create_view_uses_schema_qualified_name(
     from superset.db_engine_specs.presto import PrestoEngineSpec
 
     database = mock.MagicMock()
+    database.get_dialect.return_value = PrestoDialect()
     cursor = database.get_raw_connection().__enter__().cursor()
     cursor.fetchall.return_value = [["CREATE VIEW ..."]]
 
@@ -373,6 +382,7 @@ def test_get_create_view_returns_none_for_non_view() -> None:
     from superset.db_engine_specs.presto import PrestoEngineSpec
 
     database = mock.MagicMock()
+    database.get_dialect.return_value = PrestoDialect()
     cursor = database.get_raw_connection().__enter__().cursor()
     cursor.fetchall.side_effect = DatabaseError()
 
@@ -383,6 +393,7 @@ def test_get_create_view_propagates_other_errors() -> None:
     from superset.db_engine_specs.presto import PrestoEngineSpec
 
     database = mock.MagicMock()
+    database.get_dialect.return_value = PrestoDialect()
     cursor = database.get_raw_connection().__enter__().cursor()
     cursor.execute.side_effect = Exception("connection reset")
 
@@ -1379,6 +1390,7 @@ def test_partition_query_escapes_single_quote_in_filter_value(
 
     database: mock.MagicMock = mocker.MagicMock()
     database.get_extra.return_value = {}
+    database.get_dialect.return_value = PrestoDialect()
     table: Table = Table("my_table", "my_schema")
 
     injected: str = "2024-01-01' UNION SELECT secret FROM other_table--"
@@ -1397,6 +1409,45 @@ def test_partition_query_escapes_single_quote_in_filter_value(
     # by injected SQL) must NOT appear anywhere in the output — that would
     # mean the payload broke out of the literal.
     assert "'2024-01-01' UNION SELECT" not in sql
+
+
+@pytest.mark.parametrize(
+    "presto_version,expected_clause",
+    [
+        pytest.param(
+            None,
+            'SELECT * FROM "evil""schema"."evil""tbl$partitions"',
+            id="modern_syntax",
+        ),
+        pytest.param(
+            "0.198",
+            'SHOW PARTITIONS FROM "evil""schema"."evil""tbl"',
+            id="legacy_syntax",
+        ),
+    ],
+)
+def test_partition_query_quotes_identifiers(
+    mocker: MockerFixture,
+    presto_version: str | None,
+    expected_clause: str,
+) -> None:
+    """
+    Table and schema names must be quoted (and embedded quotes escaped) so an
+    identifier cannot inject arbitrary text into the partition query.
+    """
+    from superset.db_engine_specs.presto import PrestoBaseEngineSpec
+
+    database: mock.MagicMock = mocker.MagicMock()
+    database.get_extra.return_value = {"version": presto_version}
+    database.get_dialect.return_value = PrestoDialect()
+
+    sql: str = PrestoBaseEngineSpec._partition_query(
+        Table('evil"tbl', 'evil"schema'),
+        indexes=[{"column_names": ["ds"]}],
+        database=database,
+    )
+
+    assert expected_clause in sql
 
 
 def test_mask_encrypted_extra() -> None:

@@ -59,13 +59,13 @@ from superset.models.sql_types.presto_sql_types import (
     TinyInteger,
 )
 from superset.result_set import destringify
+from superset.sql.parse import Table
 from superset.superset_typing import ResultSetColumnType
 from superset.utils import core as utils, json
 from superset.utils.core import GenericDataType
 
 if TYPE_CHECKING:
     from superset.models.core import Database
-    from superset.sql.parse import Table
 
     with contextlib.suppress(ImportError):  # pyhive may not be installed
         from pyhive.presto import Cursor
@@ -529,17 +529,14 @@ class PrestoBaseEngineSpec(BaseEngineSpec, metaclass=ABCMeta):
         # Default to the new syntax if version is unset.
         presto_version = database.get_extra().get("version")
 
+        dialect = database.get_dialect()
         if presto_version and Version(presto_version) < Version("0.199"):
-            full_table_name = (
-                f"{table.schema}.{table.table}" if table.schema else table.table
-            )
+            full_table_name = cls.quote_table(Table(table.table, table.schema), dialect)
             partition_select_clause = f"SHOW PARTITIONS FROM {full_table_name}"
         else:
-            system_table_name = f'"{table.table}$partitions"'
-            full_table_name = (
-                f"{table.schema}.{system_table_name}"
-                if table.schema
-                else system_table_name
+            full_table_name = cls.quote_table(
+                Table(f"{table.table}$partitions", table.schema),
+                dialect,
             )
             partition_select_clause = f"SELECT * FROM {full_table_name}"  # noqa: S608
 
@@ -1382,9 +1379,10 @@ class PrestoEngineSpec(PrestoBaseEngineSpec):
         # pylint: disable=import-outside-toplevel
         from pyhive.exc import DatabaseError
 
+        full_table_name = cls.quote_table(Table(table, schema), database.get_dialect())
         with database.get_raw_connection(schema=schema) as conn:
             cursor = conn.cursor()
-            sql = f"SHOW CREATE VIEW {schema}.{table}"
+            sql = f"SHOW CREATE VIEW {full_table_name}"
             try:
                 cls.execute(cursor, sql, database)
                 rows = cls.fetch_data(cursor, 1)
