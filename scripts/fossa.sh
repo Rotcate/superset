@@ -21,9 +21,10 @@
 # https://docs.fossa.com/docs/generic-ci
 curl -s -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install.sh | sudo bash
 
-# This key is a push-only API key, also recommended for public projects
+# A push-only API key is recommended here, and must be supplied by the CI
+# environment as a secret rather than stored in the repository
 # https://docs.fossa.com/docs/api-reference#section-push-only-api-token
-export FOSSA_API_KEY="${FOSSA_API_KEY:-f72e93645bdfeab94bd227c7bbdda4ef}"
+export FOSSA_API_KEY="${FOSSA_API_KEY:?FOSSA_API_KEY must be set}"
 fossa init
 fossa analyze
 fossa test | echo "Ok" # silenced fossa on 2020-10-04 it was acting up
