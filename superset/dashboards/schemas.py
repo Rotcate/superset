@@ -88,6 +88,7 @@ charts_description = (
 )
 certified_by_description = "Person or group that has certified this dashboard"
 certification_details_description = "Details of the certification"
+reviewed_description = "Free-text reviewer notes about this dashboard"
 tags_description = "Tags to be associated with the dashboard"
 
 openapi_spec_methods_override = {
@@ -290,6 +291,9 @@ class DashboardGetResponseSchema(Schema):
     certification_details = fields.String(
         metadata={"description": certification_details_description}
     )
+    reviewed = fields.String(
+        metadata={"description": reviewed_description}, allow_none=True
+    )
     changed_by_name = fields.String()
     changed_by = fields.Nested(UserSchema(exclude=["username"]))
     changed_on = fields.DateTime()
@@ -454,6 +458,9 @@ class DashboardPostSchema(BaseDashboardSchema):
     certification_details = fields.String(
         metadata={"description": certification_details_description}, allow_none=True
     )
+    reviewed = fields.String(
+        metadata={"description": reviewed_description}, allow_none=True
+    )
     is_managed_externally = fields.Boolean(allow_none=True, dump_default=False)
     external_url = fields.String(allow_none=True, validate=validate_external_url)
     uuid = fields.UUID(allow_none=True)
@@ -527,6 +534,9 @@ class DashboardPutSchema(BaseDashboardSchema):
     )
     certification_details = fields.String(
         metadata={"description": certification_details_description}, allow_none=True
+    )
+    reviewed = fields.String(
+        metadata={"description": reviewed_description}, allow_none=True
     )
     is_managed_externally = fields.Boolean(allow_none=True, dump_default=False)
     external_url = fields.String(allow_none=True, validate=validate_external_url)
