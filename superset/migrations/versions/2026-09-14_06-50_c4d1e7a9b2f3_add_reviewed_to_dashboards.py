@@ -17,7 +17,9 @@
 """Add a reviewed column to dashboards.
 
 Adds a nullable free-text ``reviewed`` column to ``dashboards`` holding
-reviewer notes shown in the Dashboards list.
+reviewer notes shown in the Dashboards list. The ``dashboards_version``
+shadow table (SQLAlchemy-Continuum) mirrors every versioned column, so it
+receives the same column.
 
 Revision ID: c4d1e7a9b2f3
 Revises: 7e2c9a4f1b83
@@ -33,12 +35,17 @@ from superset.migrations.shared.utils import add_columns, drop_columns
 revision: str = "c4d1e7a9b2f3"
 down_revision: str = "7e2c9a4f1b83"
 
+TABLES: tuple[str, ...] = ("dashboards", "dashboards_version")
+COLUMN: str = "reviewed"
+
 
 def upgrade() -> None:
-    """Add the nullable ``reviewed`` column to ``dashboards``."""
-    add_columns("dashboards", sa.Column("reviewed", sa.Text(), nullable=True))
+    """Add the nullable ``reviewed`` column to ``dashboards`` and its shadow."""
+    for table in TABLES:
+        add_columns(table, sa.Column(COLUMN, sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    """Drop the ``reviewed`` column from ``dashboards``."""
-    drop_columns("dashboards", "reviewed")
+    """Drop the ``reviewed`` column from ``dashboards`` and its shadow."""
+    for table in TABLES:
+        drop_columns(table, COLUMN)
