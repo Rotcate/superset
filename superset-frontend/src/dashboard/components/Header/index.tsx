@@ -112,6 +112,7 @@ type DashboardPropertiesUpdate = {
   certifiedBy?: string;
   certificationDetails?: string;
   reviewed?: string;
+  poc?: string;
   editors?: Subject[];
   tags?: TagType[];
   theme?: { id: number; theme_name: string; json_data: string } | null;
@@ -134,6 +135,7 @@ type DashboardInfoState = RootState['dashboardInfo'] & {
   certified_by?: string;
   certification_details?: string;
   reviewed?: string;
+  poc?: string;
   tags?: TagType[];
   metadata: RootState['dashboardInfo']['metadata'] & {
     timed_refresh_immune_slices?: number[];
@@ -451,6 +453,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
       certified_by: dashboardInfo.certified_by,
       certification_details: dashboardInfo.certification_details,
       reviewed: dashboardInfo.reviewed,
+      poc: dashboardInfo.poc,
       css: customCss,
       dashboard_title: dashboardTitle,
       last_modified_time: actualLastModifiedTime,
@@ -588,6 +591,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
         certified_by: updates.certifiedBy,
         certification_details: updates.certificationDetails,
         reviewed: updates.reviewed,
+        poc: updates.poc,
         editors: updates.editors,
         tags: updates.tags,
         // Conditional spread: omit `theme` key entirely when undefined

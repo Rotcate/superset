@@ -91,12 +91,26 @@ const BasicInfoSection = ({
           'Reviewer notes about this dashboard, shown in the Dashboards list.',
         )}
         testId="dashboard-reviewed-field"
-        bottomSpacing={false}
       >
         <FormItem name="reviewed" noStyle>
           <Input.TextArea
             placeholder={t('Any thoughts from reviewing this dashboard')}
             data-test="dashboard-reviewed-input"
+          />
+        </FormItem>
+      </ModalFormField>
+      <ModalFormField
+        label={t('POC')}
+        helperText={t(
+          'Point of contact for this dashboard, shown in the Dashboards list.',
+        )}
+        testId="dashboard-poc-field"
+        bottomSpacing={false}
+      >
+        <FormItem name="poc" noStyle>
+          <Input
+            placeholder={t('Who to contact about this dashboard')}
+            data-test="dashboard-poc-input"
           />
         </FormItem>
       </ModalFormField>

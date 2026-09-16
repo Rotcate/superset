@@ -598,6 +598,7 @@ class TestDashboardApi(ApiEditorsTestCaseMixin, InsertChartMixin, SupersetTestCa
                 "certified_by": None,
                 "certification_details": None,
                 "reviewed": None,
+                "poc": None,
                 "changed_by": None,
                 "changed_by_name": "",
                 "charts": [],

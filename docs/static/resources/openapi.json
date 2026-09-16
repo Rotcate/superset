@@ -4063,6 +4063,11 @@
             "description": "This json object describes the positioning of the widgets in the dashboard. It is dynamically generated when adjusting the widgets size and positions by using drag & drop in the dashboard view",
             "type": "string"
           },
+          "poc": {
+            "description": "Point of contact for this dashboard",
+            "nullable": true,
+            "type": "string"
+          },
           "published": {
             "type": "boolean"
           },
@@ -4224,6 +4229,11 @@
           },
           "is_managed_externally": {
             "type": "boolean"
+          },
+          "poc": {
+            "description": "Point of contact for this dashboard",
+            "nullable": true,
+            "type": "string"
           },
           "published": {
             "nullable": true,
@@ -4414,6 +4424,11 @@
             "description": "This json object describes the positioning of the widgets in the dashboard. It is dynamically generated when adjusting the widgets size and positions by using drag & drop in the dashboard view",
             "type": "string"
           },
+          "poc": {
+            "description": "Point of contact for this dashboard",
+            "nullable": true,
+            "type": "string"
+          },
           "published": {
             "description": "Determines whether or not this dashboard is visible in the list of all dashboards.",
             "type": "boolean"
@@ -4502,6 +4517,11 @@
           },
           "position_json": {
             "description": "This json object describes the positioning of the widgets in the dashboard. It is dynamically generated when adjusting the widgets size and positions by using drag & drop in the dashboard view",
+            "nullable": true,
+            "type": "string"
+          },
+          "poc": {
+            "description": "Point of contact for this dashboard",
             "nullable": true,
             "type": "string"
           },

@@ -172,6 +172,7 @@ class Dashboard(CoreDashboard, SoftDeleteMixin, AuditMixinNullable, ImportExport
     certified_by = Column(Text)
     certification_details = Column(Text)
     reviewed = Column(Text)
+    poc = Column(Text)
     json_metadata = Column(utils.MediumText())
     # Slug uniqueness is enforced via a partial unique index
     # (``ix_dashboards_active_slug WHERE deleted_at IS NULL``) on
@@ -336,6 +337,7 @@ class Dashboard(CoreDashboard, SoftDeleteMixin, AuditMixinNullable, ImportExport
             "certified_by": self.certified_by,
             "certification_details": self.certification_details,
             "reviewed": self.reviewed,
+            "poc": self.poc,
             "css": self.css,
             "dashboard_title": self.dashboard_title,
             "published": self.published,

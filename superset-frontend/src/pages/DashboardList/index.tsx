@@ -174,6 +174,7 @@ const DASHBOARD_COLUMNS_TO_FETCH = [
   'certified_by',
   'certification_details',
   'reviewed',
+  'poc',
   'changed_on',
   ...(isFeatureEnabled(FeatureFlag.EnableViewers)
     ? ['viewers.id', 'viewers.label', 'viewers.img', 'viewers.type']
@@ -299,6 +300,7 @@ function DashboardList(props: DashboardListProps) {
                 certified_by: certifiedBy = '',
                 certification_details: certificationDetails = '',
                 reviewed = '',
+                poc = '',
                 editors,
                 viewers,
                 tags,
@@ -316,6 +318,7 @@ function DashboardList(props: DashboardListProps) {
                 certified_by: certifiedBy,
                 certification_details: certificationDetails,
                 reviewed,
+                poc,
                 editors,
                 viewers,
                 tags,
@@ -627,6 +630,19 @@ function DashboardList(props: DashboardListProps) {
         Header: t('Reviewed'),
         accessor: 'reviewed',
         id: 'reviewed',
+        disableSortBy: true,
+      },
+      {
+        Cell: ({
+          row: {
+            original: { poc },
+          },
+        }: {
+          row: { original: { poc?: string | null } };
+        }) => <span title={poc || ''}>{poc || ''}</span>,
+        Header: t('POC'),
+        accessor: 'poc',
+        id: 'poc',
         disableSortBy: true,
       },
       {
