@@ -136,6 +136,24 @@ def test_invalid_rison():
     assert parser.parse("(unclosed") == []
 
 
+@pytest.mark.parametrize(
+    "filter_string",
+    [
+        "(a:",  # truncated object -> TypeError inside prison
+        "!(a,",  # truncated array -> TypeError inside prison
+        "1e",  # dangling exponent -> ValueError inside prison
+        "((",  # nested opener -> RecursionError inside prison
+    ],
+)
+def test_malformed_rison_without_parser_exception(filter_string, caplog):
+    """prison raises errors other than ParserException for some malformed
+    input; these must still be treated as a parsing failure, not a crash."""
+    parser = RisonFilterParser()
+    with caplog.at_level(logging.WARNING):
+        assert parser.parse(filter_string) == []
+    assert "Failed to parse Rison filters" in caplog.text
+
+
 def test_invalid_rison_logs_warning(caplog):
     parser = RisonFilterParser()
     with caplog.at_level(logging.WARNING):
