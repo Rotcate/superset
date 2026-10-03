@@ -105,9 +105,12 @@ class RisonFilterParser:
         if not filter_string:
             return []
 
+        # prison only raises ParserException for some malformed input; truncated
+        # or oddly tokenised strings surface as TypeError, ValueError or
+        # RecursionError from inside the decoder instead.
         try:
             filters_obj = prison.loads(filter_string)
-        except ParserException:
+        except (ParserException, TypeError, ValueError, RecursionError):
             logger.warning(
                 "Failed to parse Rison filters: %s", filter_string, exc_info=True
             )
