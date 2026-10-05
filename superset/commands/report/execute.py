@@ -1415,6 +1415,9 @@ class BaseReportState:
         )
 
     def _has_composition(self) -> bool:
+        # Alerts never compose subreports, even if legacy rows reference them
+        if self._report_schedule.type != ReportScheduleType.REPORT:
+            return False
         return bool(
             _related(getattr(self._report_schedule, "subreports", None))
             or _composed_children(self._report_schedule)

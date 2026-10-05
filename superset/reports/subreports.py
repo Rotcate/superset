@@ -832,9 +832,15 @@ def prepare_subreport_sql(
     bound_statement = validate_subreport_sql(
         bound_sql, engine, allow_placeholders=False
     )
+    allowed_tables = _tables(bound_statement)
+    # Fail closed if binding values changed the referenced tables, so the
+    # executed SQL never reaches tables other than the authorized skeleton's.
+    if allowed_tables != _tables(SQLStatement(authz_sql, engine)):
+        raise SubreportAccessDeniedError(
+            _("Subreport parameter values changed the tables referenced by the query.")
+        )
     bound_script = SQLScript(bound_sql, engine)
     _check_denylists(database, bound_script, schema)
-    allowed_tables = _tables(bound_statement)
 
     # RLS is applied unconditionally: unlike SQL Lab, it is not gated by
     # ``RLS_IN_SQLLAB``.

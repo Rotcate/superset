@@ -414,3 +414,35 @@ def test_subreport_schema(
 
     with pytest.raises(ValidationError, match="requires the schedule"):
         ReportSchedulePutSchema().load({"parent_schedule_id": 1})
+
+
+def test_prepare_fails_closed_when_binding_changes_tables(
+    database: MagicMock, secured: dict[str, MagicMock], mocker: MockerFixture
+) -> None:
+    from sqlglot import exp as sqlglot_exp
+
+    from superset.sql.parse import SQLStatement
+
+    def bind(
+        ast: sqlglot_exp.Expression,
+        mapping: Any,
+        context: SubreportContext,
+        *,
+        null_values: bool = False,
+    ) -> sqlglot_exp.Expression:
+        sql = (
+            "SELECT * FROM orders WHERE customer_id = NULL"
+            if null_values
+            else "SELECT * FROM secrets"
+        )
+        return SQLStatement(sql, ENGINE)._parsed  # noqa: SLF001
+
+    mocker.patch.object(subreports, "_bind_ast", side_effect=bind)
+    with pytest.raises(SubreportAccessDeniedError):
+        prepare_subreport_sql(
+            database,
+            "SELECT * FROM orders WHERE customer_id = :customer_id",
+            MAPPING,
+            SubreportContext(values={"customer_id": [1]}),
+        )
+    secured["rls"].assert_not_called()

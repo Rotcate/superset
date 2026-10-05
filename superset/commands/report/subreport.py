@@ -106,6 +106,23 @@ def get_parent_schedule(parent_schedule_id: int, *, for_update: bool) -> ReportS
     return parent
 
 
+def ensure_report_parent(parent: ReportSchedule) -> None:
+    """
+    Subreports belong to reports only; alerts never carry them.
+
+    :raises SubreportInvalidError: If ``parent`` is not a report
+    """
+    if parent.type != ReportScheduleType.REPORT:
+        raise SubreportInvalidError(
+            exceptions=[
+                ValidationError(
+                    _("Only reports can have subreports."),
+                    field_name="parent_schedule_id",
+                )
+            ]
+        )
+
+
 def get_subreport_database(database_id: int) -> Database:
     """
     Resolve a database through the ``DatabaseDAO`` base filter.
@@ -165,6 +182,7 @@ def validate_subreport(
     :raises SubreportInvalidError: If the definition is invalid
     :raises SubreportAccessDeniedError: If the user cannot access its data
     """
+    ensure_report_parent(parent)
     database = get_subreport_database(definition["database_id"])
     fields_ = (
         set(available_fields)
@@ -335,6 +353,7 @@ class PreviewSubreportCommand(BaseCommand):
 
     def validate(self) -> None:
         self._parent = get_parent_schedule(self._parent_schedule_id, for_update=True)
+        ensure_report_parent(self._parent)
         self._database = get_subreport_database(self._properties["database_id"])
         parameters = get_sql_parameters(
             self._properties["sql_query"], self._database.db_engine_spec.engine

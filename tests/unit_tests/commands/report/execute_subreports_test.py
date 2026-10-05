@@ -400,3 +400,19 @@ def test_inherit_context_prefers_child_values() -> None:
     assert merged.values == {"a": [1], "c": [3]}
     assert merged.errors == {"b": "ambiguous", "d": "parent ambiguous"}
     assert _inherit_context(child, None) is child
+
+
+def test_alert_subreports_are_never_composed(
+    mocker: MockerFixture, run_subreport: Mock
+) -> None:
+    schedule = _schedule(mocker, chart=True, subreports=[_subreport(1, 0)])
+    schedule.type = ReportScheduleType.ALERT
+    state = _state(mocker, schedule)
+    mocker.patch.object(state, "_get_screenshots", return_value=[b"img"])
+    embedded = mocker.patch.object(state, "_get_embedded_data")
+
+    content = state._get_notification_content()
+
+    assert content.subreports == []
+    run_subreport.assert_not_called()
+    embedded.assert_not_called()

@@ -564,3 +564,37 @@ def test_apply_nested_subreports(
             parent, [{**PAYLOAD, "param_mapping": {"customer_id": "$F{region}"}}]
         )
     assert "subreports" in excinfo.value.normalized_messages()
+
+
+@with_feature_flags(ALERT_REPORTS=True)
+@pytest.mark.parametrize(
+    "method,url,payload",
+    [
+        ("post", "/api/v1/report/1/subreport/", PAYLOAD),
+        ("put", "/api/v1/report/1/subreport/5", {"sql_query": SQL}),
+        (
+            "post",
+            "/api/v1/report/1/subreport/execute_preview",
+            {
+                "database_id": 1,
+                "sql_query": SQL,
+                "param_mapping": MAPPING,
+                "values": {"customer_id": [1]},
+            },
+        ),
+    ],
+)
+def test_alert_parent_cannot_have_subreports(
+    client: Any,
+    env: dict[str, Any],
+    method: str,
+    url: str,
+    payload: dict[str, Any],
+) -> None:
+    env["parents"][1].type = ReportScheduleType.ALERT
+    rv = getattr(client, method)(url, json=payload)
+    assert rv.status_code == 422
+    assert "Only reports can have subreports." in rv.get_data(as_text=True)
+    env["create"].assert_not_called()
+    env["update"].assert_not_called()
+    env["prepare"].assert_not_called()
