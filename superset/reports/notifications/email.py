@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import html
 import logging
 import textwrap
 from dataclasses import dataclass
@@ -33,6 +34,11 @@ from superset.exceptions import SupersetErrorsException
 from superset.reports.models import ReportRecipients, ReportRecipientType
 from superset.reports.notifications.base import BaseNotification, NotificationContent
 from superset.reports.notifications.exceptions import NotificationError
+from superset.reports.notifications.subreports import (
+    flatten_columns,
+    subreport_csv_files,
+    truncation_note,
+)
 from superset.utils import json
 from superset.utils.core import HeaderDataType, send_email_smtp
 from superset.utils.decorators import statsd_gauge
@@ -310,8 +316,11 @@ class EmailNotification(BaseNotification):  # pylint: disable=too-few-public-met
         else:
             html_table = ""
 
+        screenshot_ids = list(images)
+        subreports_html = self._render_subreports(domain, images)
+
         img_tags = []
-        for msgid in images.keys():
+        for msgid in screenshot_ids:
             img_tags.append(
                 f"""<div class="image">
                     <img width="1000" src="cid:{msgid}">
@@ -343,10 +352,26 @@ class EmailNotification(BaseNotification):  # pylint: disable=too-few-public-met
                 {call_to_action_tag}
                 {html_table}
                 {img_tag}
+                {subreports_html}
               </body>
             </html>
             """
         )
+        attachment_data = self._get_attachment_data()
+
+        pdf_data = None
+        if self._content.pdf:
+            pdf_data = {__("%(name)s.pdf", name=self._name): self._content.pdf}
+
+        return EmailContent(
+            body=body,
+            images=images,
+            pdf=pdf_data,
+            data=attachment_data,
+            header_data=self._content.header_data,
+        )
+
+    def _get_attachment_data(self) -> dict[str, bytes | str] | None:
         # CSV and Excel are mutually exclusive (a report has a single format),
         # so at most one tabular attachment is present in the data dict.
         attachment_data: dict[str, bytes | str] | None = None
@@ -369,17 +394,44 @@ class EmailNotification(BaseNotification):  # pylint: disable=too-few-public-met
                 ): self._content.xlsx
             }
 
-        pdf_data = None
-        if self._content.pdf:
-            pdf_data = {__("%(name)s.pdf", name=self._name): self._content.pdf}
+        if self._content.subreports and not self._content.subreports_csv_bundled:
+            attachment_data = {
+                **(attachment_data or {}),
+                **subreport_csv_files(self._content.subreports),
+            }
+        return attachment_data
 
-        return EmailContent(
-            body=body,
-            images=images,
-            pdf=pdf_data,
-            data=attachment_data,
-            header_data=self._content.header_data,
-        )
+    def _render_subreports(self, domain: str, images: dict[str, bytes]) -> str:
+        """
+        HTML for ordered subreport sections. Names are escaped, tables are built
+        by pandas with escaping and then sanitized like ``embedded_data``, and
+        chart/snapshot images are added to ``images`` as inline attachments.
+        """
+        parts: list[str] = []
+        for content in self._content.subreports:
+            section = [f"<h3>{html.escape(content.name)}</h3>"]
+            if content.kind == "table" and content.data is not None:
+                # pylint: disable=no-member
+                table = nh3.clean(
+                    flatten_columns(content.data).to_html(
+                        na_rep="", index=False, escape=True
+                    ),
+                    tags=TABLE_TAGS,
+                    attributes=ALLOWED_TABLE_ATTRIBUTES,
+                )
+                section.append(process_html_links(table))
+            for image in content.images:
+                msgid = make_msgid(domain)[1:-1]
+                images[msgid] = image
+                section.append(
+                    f'<div class="image"><img width="1000" '
+                    f'alt="{html.escape(content.name, quote=True)}" '
+                    f'src="cid:{msgid}"></div>'
+                )
+            if note := truncation_note(content):
+                section.append(f"<p><em>{html.escape(note)}</em></p>")
+            parts.append(f'<div class="subreport">{"".join(section)}</div>')
+        return "".join(parts)
 
     def _get_subject(self) -> str:
         if self._content.retry_attempt is not None:

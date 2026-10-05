@@ -46,6 +46,7 @@ from superset.daos.tasks import TaskDAO
 from superset.extensions import celery_app, db
 from superset.key_value.commands.prune import KeyValuePruneCommand
 from superset.reports.models import ReportScheduleType
+from superset.reports.subreports import is_independently_scheduled
 from superset.stats_logger import BaseStatsLogger
 from superset.tasks.ambient_context import use_context
 from superset.tasks.constants import ABORT_STATES, TERMINAL_STATES
@@ -115,6 +116,13 @@ def scheduler(self: Task) -> None:  # pylint: disable=unused-argument
         else datetime.now(tz=timezone.utc)
     )
     for active_schedule in active_schedules:
+        if not is_independently_scheduled(active_schedule):
+            # Composed child schedules are delivered with their root parent
+            logger.debug(
+                "Skipping child report schedule %s; delivered with its parent",
+                active_schedule.id,
+            )
+            continue
         for schedule in cron_schedule_window(
             triggered_at, active_schedule.crontab, active_schedule.timezone
         ):

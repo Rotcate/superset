@@ -256,6 +256,27 @@ class ReportScheduleDataFrameFailedError(CommandException):
     message = _("Report Schedule execution failed when generating a dataframe.")
 
 
+class ReportScheduleSubreportFailedError(CommandException):
+    """
+    A subreport or composed child schedule could not be produced. The message
+    is safe to deliver to report owners: database error details are logged,
+    never included.
+    """
+
+    status = 422
+    message = _("A subreport could not be generated.")
+
+    def __init__(
+        self,
+        message: str = "",
+        exception: Optional[Exception] = None,
+        status: Optional[int] = None,
+    ) -> None:
+        super().__init__(message, exception)
+        if status is not None:
+            self.status = status
+
+
 class ReportScheduleExecutorNotFoundError(CommandException):
     """Raised when the configured report executor user cannot be resolved."""
 

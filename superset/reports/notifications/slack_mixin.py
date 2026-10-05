@@ -21,6 +21,7 @@ from flask_babel import gettext as __
 from superset.reports.models import ReportRecipients
 from superset.reports.notifications.base import NotificationContent
 from superset.reports.notifications.exceptions import NotificationParamException
+from superset.reports.notifications.subreports import slack_subreports_text
 from superset.utils import json
 from superset.utils.slack import (
     NO_SLACK_RECIPIENTS_MESSAGE,
@@ -143,7 +144,7 @@ Error: %(text)s
             )
 
         if content.embedded_data is None:
-            return self._message_template(content=content)
+            return self._with_subreports(content, "")
 
         # Embed data in the message
         df = content.embedded_data
@@ -197,4 +198,16 @@ Error: %(text)s
             tabulated = df.to_markdown()
             table = f"```\n{tabulated}\n```"
 
-        return self._message_template(table=table, content=content)
+        return self._with_subreports(content, table)
+
+    def _with_subreports(self, content: NotificationContent, table: str) -> str:
+        """Append named subreport sections that fit in the Slack message."""
+        message = self._message_template(table=table, content=content)
+        if not content.subreports:
+            return message
+        budget = MAXIMUM_MESSAGE_SIZE - len(message) - 2
+        sections = slack_subreports_text(content.subreports, budget)
+        if not sections:
+            return message
+        combined = f"{table}\n\n{sections}" if table else sections
+        return self._message_template(table=combined, content=content)
