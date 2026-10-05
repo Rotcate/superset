@@ -59,6 +59,7 @@ def database(mocker: MockerFixture) -> MagicMock:
     database.id = 1
     database.db_engine_spec = PostgresEngineSpec
     database.get_default_catalog.return_value = None
+    database.get_default_schema.return_value = "public"
     database.resolve_query_default_schema.return_value = "public"
     database.mutate_sql_based_on_config.side_effect = lambda sql, is_split: sql
     return database
@@ -414,6 +415,27 @@ def test_subreport_schema(
 
     with pytest.raises(ValidationError, match="requires the schedule"):
         ReportSchedulePutSchema().load({"parent_schedule_id": 1})
+
+
+def test_prepare_resolves_unqualified_tables_against_runtime_default_schema(
+    database: MagicMock, secured: dict[str, MagicMock]
+) -> None:
+    database.get_default_catalog.return_value = "analytics"
+    database.resolve_query_default_schema.side_effect = (
+        lambda sql, schema, catalog: schema
+    )
+    _, catalog, schema, _ = prepare_subreport_sql(
+        database, "SELECT * FROM orders", {}, SubreportContext()
+    )
+    assert (catalog, schema) == ("analytics", "public")
+    database.get_default_schema.assert_called_once_with("analytics")
+    assert database.resolve_query_default_schema.call_args.args[1:] == (
+        "public",
+        "analytics",
+    )
+    assert secured["access"].call_args.kwargs["schema"] == "public"
+    assert secured["access"].call_args.kwargs["force_dataset_match"] is True
+    assert secured["rls"].call_args.args[1:3] == ("analytics", "public")
 
 
 def test_prepare_fails_closed_when_binding_changes_tables(

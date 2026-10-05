@@ -726,7 +726,9 @@ def prepare_subreport_sql(
 
     catalog = database.get_default_catalog()
     try:
-        schema = database.resolve_query_default_schema(bound_sql, None, catalog)
+        schema = database.resolve_query_default_schema(
+            bound_sql, database.get_default_schema(catalog), catalog
+        )
     except SupersetSecurityException as ex:
         raise SubreportAccessDeniedError(exception=ex) from ex
 

@@ -277,7 +277,10 @@ def env(app_context: Any) -> Iterator[SubreportEnv]:
     _execute(f"INSERT INTO {SECRETS} VALUES (1, 's3cr3t')")  # noqa: S608
     database = get_example_database()
     orders = create_table_metadata(ORDERS, database)
-    create_table_metadata(SECRETS, database)
+    orders.catalog = database.get_default_catalog()
+    secrets = create_table_metadata(SECRETS, database)
+    secrets.catalog = database.get_default_catalog()
+    db.session.commit()
 
     report_perms = [("can_read", "ReportSchedule"), ("can_write", "ReportSchedule")]
     editor_role = _add_role(
@@ -876,10 +879,9 @@ def test_denylisted_functions_and_tables(
     env: SubreportEnv, test_client: FlaskClient
 ) -> None:
     _login(test_client, ADMIN_USERNAME)
-    function_sql = "SELECT sqlite_version() AS v"
-    with patch.dict(
-        app.config, {"DISALLOWED_SQL_FUNCTIONS": {"sqlite": {"sqlite_version"}}}
-    ):
+    engine = get_example_database().db_engine_spec.engine
+    function_sql = "SELECT ABS(-1) AS v"
+    with patch.dict(app.config, {"DISALLOWED_SQL_FUNCTIONS": {engine: {"abs"}}}):
         rv = _preview(test_client, env, function_sql)
         assert rv.status_code == 403
         rv = test_client.post(
@@ -888,7 +890,7 @@ def test_denylisted_functions_and_tables(
         )
         assert rv.status_code == 403
 
-    with patch.dict(app.config, {"DISALLOWED_SQL_TABLES": {"sqlite": {SECRETS}}}):
+    with patch.dict(app.config, {"DISALLOWED_SQL_TABLES": {engine: {SECRETS}}}):
         for sql in (
             f"SELECT secret FROM {SECRETS}",  # noqa: S608
             f"SELECT customer_id FROM {ORDERS} "  # noqa: S608
