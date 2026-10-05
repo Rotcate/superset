@@ -141,6 +141,10 @@ Set a report's `parent_schedule_id` to compose it into another report:
 - Only the root parent's recipients receive the composed report.
 - Inactive children are skipped.
 - The whole composition runs as the root schedule's executor.
+- Changing a subreport or child schedule requires editorship of every enclosing
+  report. Content changes update the audit author of these reports, so the default
+  editor executor is the user who made the change, not an earlier editor with
+  different datasource permissions or RLS rules.
 
 ### Permissions and security
 

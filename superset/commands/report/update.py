@@ -38,6 +38,8 @@ from superset.commands.report.exceptions import (
 )
 from superset.commands.report.subreport import (
     apply_nested_subreports,
+    get_parent_schedule,
+    mark_composition_changed,
     validate_schedule_composition,
 )
 from superset.commands.utils import compute_subjects
@@ -67,10 +69,21 @@ class UpdateReportScheduleCommand(UpdateMixin, BaseReportScheduleCommand):
     @transaction(on_error=partial(on_error, reraise=ReportScheduleUpdateFailedError))
     def run(self) -> Model:
         self.validate()
+        assert self._model is not None  # noqa: S101
         subreports = self._properties.pop("subreports", None)
+        previous_parent_id = self._model.parent_schedule_id
         model = ReportScheduleDAO.update(self._model, self._properties)
         if subreports is not None:
             apply_nested_subreports(model, subreports)
+        if model.parent_schedule_id is not None:
+            mark_composition_changed(model)
+        if (
+            previous_parent_id is not None
+            and previous_parent_id != model.parent_schedule_id
+        ):
+            mark_composition_changed(
+                get_parent_schedule(previous_parent_id, for_update=True)
+            )
         return model
 
     def validate(self) -> None:  # noqa: C901

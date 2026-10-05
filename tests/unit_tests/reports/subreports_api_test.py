@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from flask_appbuilder.security.sqla.models import User
 from marshmallow import ValidationError
 from pytest_mock import MockerFixture
 from sqlalchemy.orm.session import Session
@@ -476,7 +477,7 @@ def test_schedule_composition_validation(mocker: MockerFixture) -> None:
     from superset.commands.report.subreport import validate_schedule_composition
     from superset.reports.subreports import SubreportScheduleError
 
-    validate = mocker.patch(f"{CMD}.validate_parent_schedule")
+    validate = mocker.patch(f"{CMD}.validate_parent_schedule", return_value=_parent(1))
     editorship = mocker.patch.object(security_manager, "raise_for_editorship")
     model = _parent(3)
 
@@ -547,6 +548,7 @@ def test_apply_nested_subreports(
 
     mocker.patch("superset.daos.database.DatabaseDAO.find_by_id", return_value=database)
     prepare = mocker.patch(f"{CMD}.prepare_subreport_sql")
+    mocker.patch(f"{CMD}.g", user=None)
     parent = _saved_parent(tables, "parent")
 
     apply_nested_subreports(parent, [PAYLOAD, {**PAYLOAD, "name": "B", "position": 1}])
@@ -564,6 +566,45 @@ def test_apply_nested_subreports(
             parent, [{**PAYLOAD, "param_mapping": {"customer_id": "$F{region}"}}]
         )
     assert "subreports" in excinfo.value.normalized_messages()
+
+
+@with_feature_flags(ALERT_REPORTS=True)
+@pytest.mark.parametrize("method", ["post", "put", "delete"])
+def test_subreport_writes_attribute_all_enclosing_schedules(
+    mocker: MockerFixture, client: Any, env: dict[str, Any], method: str
+) -> None:
+    editor = User(id=42, username="editor")
+    mocker.patch(f"{CMD}.g", user=editor)
+    parent, root = env["parents"][1], env["parents"][2]
+    parent.parent_schedule_id = root.id
+    url = "/api/v1/report/1/subreport/" + ("" if method == "post" else "5")
+    response = getattr(client, method)(url, json=PAYLOAD)
+    assert response.status_code in (200, 201)
+    assert parent.changed_by is editor
+    assert root.changed_by is editor
+    assert parent.changed_on is not None
+    assert root.changed_on is not None
+
+
+@with_feature_flags(ALERT_REPORTS=True)
+@pytest.mark.parametrize("method", ["post", "put", "delete"])
+def test_subreport_writes_require_enclosing_report_editorship(
+    client: Any, env: dict[str, Any], method: str
+) -> None:
+    parent, root = env["parents"][1], env["parents"][2]
+    parent.parent_schedule_id = root.id
+
+    def check(model: ReportSchedule) -> None:
+        if model is root:
+            raise SupersetSecurityException(MagicMock())
+
+    env["editorship"].side_effect = check
+    url = "/api/v1/report/1/subreport/" + ("" if method == "post" else "5")
+    response = getattr(client, method)(url, json=PAYLOAD)
+    assert response.status_code == 403
+    env["create"].assert_not_called()
+    env["update"].assert_not_called()
+    env["delete"].assert_not_called()
 
 
 @with_feature_flags(ALERT_REPORTS=True)

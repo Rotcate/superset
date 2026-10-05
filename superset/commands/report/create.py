@@ -34,6 +34,7 @@ from superset.commands.report.exceptions import (
 )
 from superset.commands.report.subreport import (
     apply_nested_subreports,
+    mark_composition_changed,
     validate_schedule_composition,
 )
 from superset.commands.utils import populate_subjects
@@ -62,6 +63,8 @@ class CreateReportScheduleCommand(CreateMixin, BaseReportScheduleCommand):
         model = ReportScheduleDAO.create(attributes=self._properties)
         if subreports:
             apply_nested_subreports(model, subreports)
+        if model.parent_schedule_id is not None:
+            mark_composition_changed(model)
         return model
 
     def _populate_recipients(self, exceptions: list[ValidationError]) -> None:

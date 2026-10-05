@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from functools import partial
 from typing import Any
 
+from flask import g
 from flask_babel import gettext as _
 from marshmallow import ValidationError
 
@@ -103,7 +105,41 @@ def get_parent_schedule(parent_schedule_id: int, *, for_update: bool) -> ReportS
             security_manager.raise_for_editorship(parent)
         except SupersetSecurityException as ex:
             raise ReportScheduleForbiddenError() from ex
+        validate_composition_editorship(parent)
     return parent
+
+
+def _composition_parents(model: ReportSchedule) -> list[ReportSchedule]:
+    """Resolve all enclosing schedules without crossing DAO visibility filters."""
+    parents: list[ReportSchedule] = []
+    visited = {model.id}
+    parent_id = model.parent_schedule_id
+    while parent_id is not None:
+        if parent_id in visited:
+            raise SubreportInvalidError(
+                exceptions=[ValidationError(_("Report composition contains a cycle."))]
+            )
+        visited.add(parent_id)
+        parent = get_parent_schedule(parent_id, for_update=False)
+        parents.append(parent)
+        parent_id = parent.parent_schedule_id
+    return parents
+
+
+def validate_composition_editorship(model: ReportSchedule) -> None:
+    """Require editorship of every report whose delivered content will change."""
+    for parent in _composition_parents(model):
+        try:
+            security_manager.raise_for_editorship(parent)
+        except SupersetSecurityException as ex:
+            raise ReportScheduleForbiddenError() from ex
+
+
+def mark_composition_changed(model: ReportSchedule) -> None:
+    """Attribute composed content writes to their editor, including the root."""
+    for schedule in [model, *_composition_parents(model)]:
+        schedule.changed_by = g.user
+        schedule.changed_on = datetime.now()
 
 
 def ensure_report_parent(parent: ReportSchedule) -> None:
@@ -257,6 +293,7 @@ class CreateSubreportCommand(BaseCommand):
     def run(self) -> Subreport:
         self.validate()
         assert self._parent is not None  # noqa: S101
+        mark_composition_changed(self._parent)
         return SubreportDAO.create(
             attributes={
                 **_attributes(self._properties),
@@ -276,16 +313,20 @@ class UpdateSubreportCommand(BaseCommand):
         self._parent_schedule_id = parent_schedule_id
         self._subreport_id = subreport_id
         self._properties = data.copy()
+        self._parent: ReportSchedule | None = None
         self._model: Subreport | None = None
 
     @transaction(on_error=partial(on_error, reraise=SubreportUpdateFailedError))
     def run(self) -> Subreport:
         self.validate()
         assert self._model is not None  # noqa: S101
+        assert self._parent is not None  # noqa: S101
+        mark_composition_changed(self._parent)
         return SubreportDAO.update(self._model, _attributes(self._properties))
 
     def validate(self) -> None:
         parent = get_parent_schedule(self._parent_schedule_id, for_update=True)
+        self._parent = parent
         self._model = SubreportDAO.find_by_parent(parent.id, self._subreport_id)
         if self._model is None:
             raise SubreportNotFoundError()
@@ -305,16 +346,20 @@ class DeleteSubreportCommand(BaseCommand):
     def __init__(self, parent_schedule_id: int, subreport_id: int) -> None:
         self._parent_schedule_id = parent_schedule_id
         self._subreport_id = subreport_id
+        self._parent: ReportSchedule | None = None
         self._model: Subreport | None = None
 
     @transaction(on_error=partial(on_error, reraise=SubreportDeleteFailedError))
     def run(self) -> None:
         self.validate()
         assert self._model is not None  # noqa: S101
+        assert self._parent is not None  # noqa: S101
+        mark_composition_changed(self._parent)
         SubreportDAO.delete([self._model])
 
     def validate(self) -> None:
         parent = get_parent_schedule(self._parent_schedule_id, for_update=True)
+        self._parent = parent
         self._model = SubreportDAO.find_by_parent(parent.id, self._subreport_id)
         if self._model is None:
             raise SubreportNotFoundError()
@@ -383,6 +428,8 @@ def validate_schedule_composition(
     report_type = properties.get("type", model.type if model else None)
     current_parent_id = model.parent_schedule_id if model else None
     parent_id = properties.get("parent_schedule_id", current_parent_id)
+    if model is not None and current_parent_id is not None:
+        validate_composition_editorship(model)
 
     if parent_id is not None and (
         parent_id != current_parent_id or report_type != (model and model.type)
@@ -401,6 +448,7 @@ def validate_schedule_composition(
                     security_manager.raise_for_editorship(parent)
                 except SupersetSecurityException as ex:
                     raise ReportScheduleForbiddenError() from ex
+                validate_composition_editorship(parent)
 
     if (
         model is not None
@@ -436,3 +484,4 @@ def apply_nested_subreports(
     ensure_subreports_enabled()
     db.session.flush()
     model.subreports = build_subreports(model, items)
+    mark_composition_changed(model)

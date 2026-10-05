@@ -982,6 +982,97 @@ def _last_log_state(schedule_id: int) -> str:
     return log.state
 
 
+@pytest.mark.parametrize("operation", ["create", "update", "nested"])
+@patch("superset.reports.notifications.email.send_email_smtp")
+@patch("superset.utils.screenshots.DashboardScreenshot.get_screenshot")
+def test_composed_sql_uses_current_editor_rls(
+    screenshot_mock: MagicMock,
+    email_mock: MagicMock,
+    env: SubreportEnv,
+    test_client: FlaskClient,
+    operation: str,
+) -> None:
+    screenshot_mock.return_value = SCREENSHOT_FILE
+    parent = db.session.get(ReportSchedule, env.parent_id)
+    parent.created_by = parent.changed_by = _user(OWNER)
+    existing = _create(env) if operation == "update" else None
+    db.session.commit()
+    _login(test_client, WEST)
+    if operation == "create":
+        response = test_client.post(_url(parent.id), json=_definition(env))
+    elif operation == "update":
+        assert existing is not None
+        response = test_client.put(
+            _url(parent.id, str(existing.id)), json={"sql_query": IN_CUSTOMERS}
+        )
+    else:
+        response = test_client.put(
+            f"/api/v1/report/{parent.id}", json={"subreports": [_definition(env)]}
+        )
+    assert response.status_code in (200, 201), response.json
+    db.session.expire_all()
+    assert db.session.get(ReportSchedule, env.parent_id).changed_by_fk == _user(WEST).id
+    _run_report(env.parent_id)
+    assert _last_log_state(env.parent_id) == ReportState.SUCCESS
+    body = email_mock.call_args[0][2]
+    assert "<td>west</td>" in body
+    assert "<td>east</td>" not in body
+
+
+@pytest.mark.parametrize("operation", ["attach", "edit", "detach", "delete"])
+def test_child_schedule_writes_change_root_editor(
+    env: SubreportEnv, test_client: FlaskClient, operation: str
+) -> None:
+    parent = db.session.get(ReportSchedule, env.parent_id)
+    dashboard = db.session.get(Dashboard, env.dashboard_id)
+    child = _insert_parent("editor_child", [_user(OWNER), _user(WEST)], dashboard, [])
+    if operation != "attach":
+        child.parent_schedule_id = parent.id
+    parent.created_by = parent.changed_by = _user(OWNER)
+    db.session.commit()
+    _login(test_client, WEST)
+    if operation == "delete":
+        response = test_client.delete(f"/api/v1/report/?q=!({child.id})")
+    else:
+        changes = {
+            "attach": {"parent_schedule_id": parent.id},
+            "edit": {"name": f"{PREFIX}edited_child"},
+            "detach": {"parent_schedule_id": None},
+        }
+        response = test_client.put(
+            f"/api/v1/report/{child.id}", json=changes[operation]
+        )
+    assert response.status_code == 200, response.json
+    db.session.expire_all()
+    assert db.session.get(ReportSchedule, env.parent_id).changed_by_fk == _user(WEST).id
+
+
+@pytest.mark.parametrize("operation", ["edit", "detach", "delete"])
+def test_child_editor_cannot_change_another_editors_composition(
+    env: SubreportEnv, test_client: FlaskClient, operation: str
+) -> None:
+    parent = db.session.get(ReportSchedule, env.parent_id)
+    dashboard = db.session.get(Dashboard, env.dashboard_id)
+    child = _insert_parent(
+        "unshared_child", [_user(OTHER), _user(OWNER)], dashboard, []
+    )
+    child.parent_schedule_id = parent.id
+    db.session.commit()
+    _login(test_client, OTHER)
+    if operation == "delete":
+        response = test_client.delete(f"/api/v1/report/?q=!({child.id})")
+    else:
+        changes: dict[str, Any] = (
+            {"name": f"{PREFIX}denied_child"}
+            if operation == "edit"
+            else {"parent_schedule_id": None}
+        )
+        response = test_client.put(f"/api/v1/report/{child.id}", json=changes)
+    assert response.status_code in (403, 404), response.json
+    db.session.expire_all()
+    assert db.session.get(ReportSchedule, child.id).parent_schedule_id == env.parent_id
+
+
 @patch("superset.reports.notifications.email.send_email_smtp")
 @patch("superset.utils.screenshots.DashboardScreenshot.get_screenshot")
 def test_scheduled_report_composes_subreports_and_children(
