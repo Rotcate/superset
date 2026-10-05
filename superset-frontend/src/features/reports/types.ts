@@ -73,4 +73,93 @@ export interface ReportObject {
   send_failed_reports?: boolean;
   retry_notify_owners?: boolean;
   retry_notify_recipients?: boolean;
+  parent_schedule_id?: number | null;
+  subreports?: SubreportObject[];
+}
+
+/**
+ * Subreports: parameterized SQL queries rendered inside a parent report's
+ * notification. Mirrors `Subreport` in `superset/reports/models.py`.
+ */
+export enum SubreportVizType {
+  Table = 'table',
+  Chart = 'chart',
+}
+
+export enum SubreportChartType {
+  Bar = 'bar',
+  Line = 'line',
+}
+
+export interface SubreportTemplate {
+  title?: string;
+  columns?: string[];
+  max_rows?: number;
+  chart_type?: SubreportChartType;
+  x_column?: string;
+  y_columns?: string[];
+}
+
+/**
+ * Maps a named SQL placeholder (`:customer_id`) to a parent field reference
+ * (`$F{customer_id}`).
+ */
+export type SubreportParamMapping = Record<string, string>;
+
+export interface SubreportObject {
+  id?: number;
+  uuid?: string;
+  parent_schedule_id?: number;
+  name: string;
+  sql_query: string;
+  database_id: number | null;
+  param_mapping: SubreportParamMapping;
+  position: number;
+  viz_type: SubreportVizType;
+  template: SubreportTemplate;
+}
+
+export type SubreportContextFieldSource = 'native_filter' | 'chart_data';
+
+export interface SubreportContextField {
+  name: string;
+  source?: SubreportContextFieldSource | string;
+  label?: string | null;
+  filter_id?: string | null;
+  filter_type?: string | null;
+  reference?: string;
+}
+
+export interface SubreportListResponse {
+  result: SubreportObject[];
+  context_fields?: SubreportContextField[];
+}
+
+export type SubreportPreviewValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<string | number | boolean | null>;
+
+export interface SubreportPreviewPayload {
+  database_id: number;
+  sql_query: string;
+  param_mapping: SubreportParamMapping;
+  values: Record<string, SubreportPreviewValue>;
+  row_limit?: number;
+}
+
+export interface SubreportPreviewColumn {
+  name: string;
+  type?: string;
+}
+
+export type SubreportPreviewRecord = Record<string, unknown>;
+
+export interface SubreportPreviewResult {
+  columns: Array<string | SubreportPreviewColumn>;
+  data: SubreportPreviewRecord[];
+  row_count: number;
+  truncated?: boolean;
 }
