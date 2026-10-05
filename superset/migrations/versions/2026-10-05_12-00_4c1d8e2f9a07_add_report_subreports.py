@@ -123,5 +123,4 @@ def downgrade() -> None:
     drop_index(REPORT_SCHEDULE_TABLE, PARENT_INDEX_NAME)
     drop_columns(REPORT_SCHEDULE_TABLE, "parent_schedule_id")
 
-    drop_index(SUBREPORT_TABLE, SUBREPORT_PARENT_INDEX_NAME)
     drop_table(SUBREPORT_TABLE)

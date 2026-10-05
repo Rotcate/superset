@@ -22,6 +22,7 @@ from types import ModuleType
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from pytest_mock import MockerFixture
 from sqlalchemy import Column, create_engine, inspect, Integer, MetaData, Table
 from sqlalchemy.engine import Engine
 
@@ -76,3 +77,19 @@ def test_downgrade_is_reversible(engine: Engine) -> None:
 
     assert migration.SUBREPORT_TABLE not in inspect(engine).get_table_names()
     assert "parent_schedule_id" not in _columns(engine, "report_schedule")
+
+
+def test_downgrade_keeps_subreport_fk_index_until_table_drop(
+    engine: Engine, mocker: MockerFixture
+) -> None:
+    """Let dropping the child table remove its FK-backed indexes on MySQL."""
+    drop_index = mocker.spy(migration, "drop_index")
+    with engine.begin() as connection:
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+            migration.downgrade()
+
+    drop_index.assert_called_once_with(
+        migration.REPORT_SCHEDULE_TABLE, migration.PARENT_INDEX_NAME
+    )
+    assert migration.SUBREPORT_TABLE not in inspect(engine).get_table_names()

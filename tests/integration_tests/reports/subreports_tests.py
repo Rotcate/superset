@@ -277,10 +277,7 @@ def env(app_context: Any) -> Iterator[SubreportEnv]:
     _execute(f"INSERT INTO {SECRETS} VALUES (1, 's3cr3t')")  # noqa: S608
     database = get_example_database()
     orders = create_table_metadata(ORDERS, database)
-    orders.catalog = database.get_default_catalog()
-    secrets = create_table_metadata(SECRETS, database)
-    secrets.catalog = database.get_default_catalog()
-    db.session.commit()
+    create_table_metadata(SECRETS, database)
 
     report_perms = [("can_read", "ReportSchedule"), ("can_write", "ReportSchedule")]
     editor_role = _add_role(
@@ -873,6 +870,28 @@ def test_rls_is_applied_per_user(
         )
         assert rv.status_code == 200, rv.json
         assert _customer_ids(rv) == expected
+
+
+def test_dataset_access_does_not_cross_catalogs(
+    env: SubreportEnv, test_client: FlaskClient
+) -> None:
+    database = get_example_database()
+    catalog = database.get_default_catalog()
+    if catalog is None:
+        pytest.skip("Database does not support catalogs")
+    orders = db.session.query(SqlaTable).filter_by(table_name=ORDERS).one()
+    orders.catalog = f"{catalog}_other"
+    db.session.commit()
+    _add_role(EDITOR_ROLE, [("datasource_access", orders.perm)])
+    db.session.commit()
+    _login(test_client, OWNER)
+
+    with patch("superset.models.core.Database.get_df") as execute:
+        response = _preview(
+            test_client, env, IN_CUSTOMERS, param_mapping=CUSTOMER_MAPPING
+        )
+        assert response.status_code == 403, response.json
+        execute.assert_not_called()
 
 
 def test_denylisted_functions_and_tables(
