@@ -43,6 +43,7 @@ from superset.commands.report.exceptions import (
     ReportScheduleInvalidError,
     ReportScheduleNotFoundError,
     ReportScheduleUpdateFailedError,
+    SubreportInvalidError,
 )
 from superset.commands.report.execute_now import ExecuteReportScheduleNowCommand
 from superset.commands.report.update import UpdateReportScheduleCommand
@@ -62,6 +63,7 @@ from superset.reports.schemas import (
     ReportSchedulePutSchema,
     ReportScheduleSubscribeSchema,
 )
+from superset.reports.subreports import SubreportError
 from superset.subjects.filters import FilterRelatedSubjects, subject_type_filter
 from superset.utils.slack import (
     get_channels_with_search,
@@ -423,6 +425,12 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
             return self.response_400(message=str(ex))
         except ReportScheduleInvalidError as ex:
             return self.response_422(message=ex.normalized_messages())
+        except ReportScheduleForbiddenError:
+            return self.response_403()
+        except SubreportInvalidError as ex:
+            return self.response_422(message=ex.normalized_messages())
+        except SubreportError as ex:
+            return self.response(ex.status, message=str(ex.message))
         except ReportScheduleCreateFailedError as ex:
             logger.error(
                 "Error creating report schedule %s: %s",
@@ -496,6 +504,12 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
             return self.response_400(message=str(ex))
         except ReportScheduleInvalidError as ex:
             return self.response_422(message=ex.normalized_messages())
+        except ReportScheduleForbiddenError:
+            return self.response_403()
+        except SubreportInvalidError as ex:
+            return self.response_422(message=ex.normalized_messages())
+        except SubreportError as ex:
+            return self.response(ex.status, message=str(ex.message))
         except ReportScheduleCreateFailedError as ex:
             logger.error(
                 "Error creating report schedule %s: %s",
@@ -555,7 +569,7 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         try:
-            item = self.edit_model_schema.load(request.json)
+            item = ReportSchedulePutSchema(report_schedule_id=pk).load(request.json)
             # normally this would be covered by a decorator, however
             # due to this model being formatted incorrectly the data
             # needed some manipulation.
@@ -578,6 +592,10 @@ class ReportScheduleRestApi(BaseSupersetModelRestApi):
             return self.response_422(message=ex.normalized_messages())
         except ReportScheduleForbiddenError:
             return self.response_403()
+        except SubreportInvalidError as ex:
+            return self.response_422(message=ex.normalized_messages())
+        except SubreportError as ex:
+            return self.response(ex.status, message=str(ex.message))
         except ReportScheduleUpdateFailedError as ex:
             logger.error(
                 "Error updating report %s: %s",

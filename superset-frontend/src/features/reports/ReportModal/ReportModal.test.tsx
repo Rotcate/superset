@@ -57,7 +57,8 @@ const mockedGetBootstrapData = getBootstrapData as jest.MockedFunction<
 >;
 
 const REPORT_ENDPOINT = 'glob:*/api/v1/report*';
-fetchMock.get(REPORT_ENDPOINT, {});
+const REPORT_GET_ROUTE = 'report-get';
+fetchMock.get(REPORT_ENDPOINT, {}, { name: REPORT_GET_ROUTE });
 
 const NOOP = () => {};
 
@@ -157,7 +158,7 @@ test('creates a new email report via modal Add button', async () => {
   render(<ReportModal {...defaultProps} />, { useRedux: true });
 
   const addButton = screen.getByRole('button', { name: /add/i });
-  await waitFor(async () => await userEvent.click(addButton));
+  await userEvent.click(addButton);
 
   // Verify exactly one POST to the subscribe endpoint
   await waitFor(() => {
@@ -437,7 +438,7 @@ test('edit mode dispatches editReport via PUT on save', async () => {
 
   expect(screen.getByText('Edit email report')).toBeInTheDocument();
   const saveButton = screen.getByRole('button', { name: /save/i });
-  await waitFor(async () => await userEvent.click(saveButton));
+  await userEvent.click(saveButton);
 
   await waitFor(() => {
     const calls = fetchMock.callHistory.calls('put-report-42');
@@ -571,7 +572,7 @@ test('edit mode does not fall back to user id when subject id is unavailable', a
   });
 
   const saveButton = screen.getByRole('button', { name: /save/i });
-  await waitFor(async () => await userEvent.click(saveButton));
+  await userEvent.click(saveButton);
 
   await waitFor(() => {
     const calls = fetchMock.callHistory.calls('put-report-43');
@@ -597,7 +598,7 @@ test('submit failure dispatches danger toast and keeps modal open', async () => 
   });
 
   const addButton = screen.getByRole('button', { name: /add/i });
-  await waitFor(async () => await userEvent.click(addButton));
+  await userEvent.click(addButton);
 
   // The addReport action catches 500 errors, dispatches a danger toast, and re-throws
   await waitFor(() => {
@@ -711,4 +712,72 @@ test('retry fields are included in the POST body when Enable Retries is enabled'
   });
 
   fetchMock.removeRoute('post-retry');
+});
+
+test('hides the subreports tab when ALERT_REPORTS is disabled', () => {
+  mockedIsFeatureEnabled.mockImplementation(() => false);
+  render(<ReportModal {...defaultProps} />, { useRedux: true });
+  expect(
+    screen.queryByRole('tab', { name: 'Subreports' }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByTestId('report-name-test')).toBeInTheDocument();
+});
+
+test('subreports tab asks to save a new report first', async () => {
+  render(<ReportModal {...defaultProps} />, { useRedux: true });
+  expect(
+    screen.getByRole('tab', { name: 'Report configuration' }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('tab', { name: 'Subreports' }));
+  expect(await screen.findByText('Save the report first')).toBeInTheDocument();
+});
+
+test('subreports tab loads subreports for a saved report', async () => {
+  // The catch-all report route would shadow the subreport list route.
+  fetchMock.removeRoute(REPORT_GET_ROUTE);
+  fetchMock.get(
+    'glob:*/api/v1/report/42/subreport/',
+    {
+      result: [
+        {
+          id: 1,
+          name: 'Top customers',
+          sql_query: 'SELECT 1',
+          database_id: 1,
+          param_mapping: {},
+          position: 0,
+          viz_type: 'table',
+          template: {},
+        },
+      ],
+      context_fields: [],
+    },
+    { name: 'list-subreports' },
+  );
+  const store = createStore(
+    {
+      reports: {
+        dashboards: {
+          1: {
+            id: 42,
+            name: 'Existing Dashboard Report',
+            crontab: '0 9 * * 1',
+            creation_method: 'dashboards',
+            report_format: 'PNG',
+            active: true,
+            type: 'Report',
+            dashboard: 1,
+          },
+        },
+      },
+    },
+    reducerIndex,
+  );
+  render(<ReportModal {...defaultProps} />, { useRedux: true, store });
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Subreports' }));
+  expect(await screen.findByText('Top customers')).toBeInTheDocument();
+  expect(fetchMock.callHistory.calls('list-subreports')).toHaveLength(1);
+  fetchMock.removeRoute('list-subreports');
+  fetchMock.get(REPORT_ENDPOINT, {}, { name: REPORT_GET_ROUTE });
 });

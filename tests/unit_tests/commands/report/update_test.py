@@ -54,6 +54,9 @@ def _make_model(
     model.editors = []
     model.retry_on_failure = False
     model.send_failed_reports = False
+    model.parent_schedule_id = None
+    model.children = []
+    model.subreports = []
     return model
 
 

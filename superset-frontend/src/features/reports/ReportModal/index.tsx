@@ -47,6 +47,7 @@ import {
   type CronError,
 } from '@superset-ui/core/components';
 import { InputNumber } from '@superset-ui/core/components/Input';
+import Tabs from '@superset-ui/core/components/Tabs';
 import TimezoneSelector from '@superset-ui/core/components/TimezoneSelector';
 import { Icons } from '@superset-ui/core/components/Icons';
 import { Typography } from '@superset-ui/core/components/Typography';
@@ -62,6 +63,7 @@ import { reportSelector } from 'src/views/CRUD/hooks';
 import getBootstrapData from 'src/utils/getBootstrapData';
 import { StyledInputContainer } from 'src/features/alerts/AlertReportModal';
 import { CreationMethod } from './HeaderReportDropdown';
+import SubreportsPanel from './SubreportsPanel';
 import {
   antDErrorAlertStyles,
   CustomWidthHeaderStyle,
@@ -117,6 +119,9 @@ type ReportObjectState = Partial<ReportObject> & {
 // Same instance to be used in useEffects
 const EMPTY_OBJECT = {};
 
+const CONFIGURATION_TAB = 'configuration';
+const SUBREPORTS_TAB = 'subreports';
+
 function ReportModal({
   onHide,
   show = false,
@@ -166,6 +171,8 @@ function ReportModal({
     initialState,
   );
   const [cronError, setCronError] = useState<CronError>();
+  const [activeTab, setActiveTab] = useState(CONFIGURATION_TAB);
+  const subreportsEnabled = isFeatureEnabled(FeatureFlag.AlertReports);
 
   const dispatch = useDispatch();
   // Report fetch logic
@@ -416,15 +423,8 @@ function ReportModal({
     </StyledErrorHandlingSection>
   );
 
-  return (
-    <StyledModal
-      show={show}
-      onHide={onHide}
-      title={wrappedTitle}
-      footer={renderModalFooter}
-      width="432"
-      centered
-    >
+  const renderConfigurationSection = (
+    <>
       <StyledTopSection>
         <LabeledErrorBoundInput
           id="name"
@@ -494,6 +494,42 @@ function ReportModal({
         {isFeatureEnabled(FeatureFlag.AlertReportsRetry) &&
           renderErrorHandlingSection}
       </StyledBottomSection>
+    </>
+  );
+
+  return (
+    <StyledModal
+      show={show}
+      onHide={onHide}
+      title={wrappedTitle}
+      footer={renderModalFooter}
+      width={activeTab === SUBREPORTS_TAB && subreportsEnabled ? '900' : '432'}
+      centered
+    >
+      {subreportsEnabled ? (
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: CONFIGURATION_TAB,
+              label: t('Report configuration'),
+              children: renderConfigurationSection,
+            },
+            {
+              key: SUBREPORTS_TAB,
+              label: t('Subreports'),
+              children: (
+                <SubreportsPanel
+                  parentId={isEditMode ? currentReport.id : undefined}
+                />
+              ),
+            },
+          ]}
+        />
+      ) : (
+        renderConfigurationSection
+      )}
       {currentReport.error && (
         <Alert
           type="error"

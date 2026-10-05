@@ -360,7 +360,7 @@ def test_query_datasources_by_name(mocker: MockerFixture) -> None:
     """
     db = mocker.patch("superset.connectors.sqla.models.db")
 
-    database = Database(database_name="my_db", id=1)
+    database = Database(database_name="my_db", id=1, sqlalchemy_uri="sqlite://")
     sqla_table = SqlaTable(
         table_name="my_sqla_table",
         columns=[],
@@ -381,6 +381,30 @@ def test_query_datasources_by_name(mocker: MockerFixture) -> None:
         catalog="db1",
         schema="schema1",
     )
+
+
+@pytest.mark.parametrize("catalog", ["default_catalog", "other_catalog"])
+def test_query_datasources_only_alias_null_catalog_to_default(
+    mocker: MockerFixture, catalog: str
+) -> None:
+    """An implicit catalog aliases the configured default, not other catalogs."""
+    db = mocker.patch("superset.connectors.sqla.models.db")
+    database = Database(database_name="my_db", id=1, sqlalchemy_uri="sqlite://")
+    mocker.patch.object(database, "get_default_catalog", return_value="default_catalog")
+
+    SqlaTable.query_datasources_by_name(database, "orders", catalog, "public")
+
+    if catalog == "default_catalog":
+        db.session.query().filter_by.assert_called_once_with(
+            database_id=1, table_name="orders", schema="public"
+        )
+        clause = db.session.query().filter_by().filter.call_args.args[0]
+        assert str(clause) == "tables.catalog = :catalog_1 OR tables.catalog IS NULL"
+    else:
+        db.session.query().filter_by.assert_called_once_with(
+            database_id=1, table_name="orders", catalog=catalog, schema="public"
+        )
+        db.session.query().filter_by().filter.assert_not_called()
 
 
 def test_query_datasources_by_permissions(mocker: MockerFixture) -> None:

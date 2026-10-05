@@ -2380,12 +2380,17 @@ class SqlaTable(
             "database_id": database.id,
             "table_name": datasource_name,
         }
-        if catalog:
+        default_catalog = database.get_default_catalog() if catalog else None
+        if catalog and catalog != default_catalog:
             filters["catalog"] = catalog
         if schema:
             filters["schema"] = schema
 
-        return db.session.query(cls).filter_by(**filters).all()
+        query = db.session.query(cls).filter_by(**filters)
+        if catalog and catalog == default_catalog:
+            # NULL denotes the configured default catalog, as in RLS lookup.
+            query = query.filter(or_(cls.catalog == catalog, cls.catalog.is_(None)))
+        return query.all()
 
     @classmethod
     def query_datasources_by_permissions(  # pylint: disable=invalid-name

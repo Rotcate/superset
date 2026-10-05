@@ -204,6 +204,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.queries.saved_queries.api import SavedQueryRestApi
         from superset.reports.api import ReportScheduleRestApi
         from superset.reports.logs.api import ReportExecutionLogRestApi
+        from superset.reports.subreports_api import SubreportRestApi
         from superset.row_level_security.api import RLSRestApi
         from superset.security.api import (
             RoleRestAPI,
@@ -294,6 +295,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         appbuilder.add_api(QueryRestApi)
         appbuilder.add_api(ReportScheduleRestApi)
         appbuilder.add_api(ReportExecutionLogRestApi)
+        appbuilder.add_api(SubreportRestApi)
         appbuilder.add_api(RLSRestApi)
         appbuilder.add_api(SavedQueryRestApi)
         if feature_flag_manager.is_feature_enabled("SEMANTIC_LAYERS"):

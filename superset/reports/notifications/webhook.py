@@ -34,6 +34,12 @@ from superset.reports.notifications.exceptions import (
     NotificationParamException,
     NotificationUnprocessableException,
 )
+from superset.reports.notifications.subreports import (
+    flatten_columns,
+    subreport_csv_files,
+    subreport_image_files,
+)
+from superset.reports.subreports import dataframe_to_payload
 from superset.utils import json
 from superset.utils.decorators import statsd_gauge
 from superset.utils.network import is_safe_host, is_safe_ip
@@ -177,19 +183,43 @@ class WebhookNotification(BaseNotification):
             "chart_id": self._content.header_data.get("chart_id"),
             "dashboard_id": self._content.header_data.get("dashboard_id"),
         }
-        content = {
+        content: dict[str, Any] = {
             "name": self._content.name,
             "header": header_content,
             "text": self._content.text,
             "description": self._content.description,
             "url": self._content.url,
         }
+        if self._content.subreports:
+            content["subreports"] = self._get_subreports_payload()
         return content
+
+    def _get_subreports_payload(self) -> list[dict[str, Any]]:
+        sections: list[dict[str, Any]] = []
+        for position, item in enumerate(self._content.subreports):
+            section: dict[str, Any] = {
+                "position": position,
+                "name": item.name,
+                "kind": item.kind,
+                "source": item.source,
+            }
+            if item.data is not None:
+                section.update(
+                    dataframe_to_payload(flatten_columns(item.data), item.truncated)
+                )
+            sections.append(section)
+        # Round-trip through the Superset encoder so dates/decimals are JSON-safe
+        return json.loads(json.dumps(sections, default=json.json_iso_dttm_ser))
 
     def _get_files(self) -> list[tuple[str, tuple[str, bytes, str]]]:
         files = []
         if self._content.csv:
-            files.append(("files", ("report.csv", self._content.csv, "text/csv")))
+            if self._content.subreports_csv_bundled:
+                files.append(
+                    ("files", ("report.zip", self._content.csv, "application/zip"))
+                )
+            else:
+                files.append(("files", ("report.csv", self._content.csv, "text/csv")))
         if self._content.xlsx:
             files.append(
                 (
@@ -214,6 +244,11 @@ class WebhookNotification(BaseNotification):
                         (f"screenshot_{i}.png", screenshot, "image/png"),
                     )
                 )
+        if not self._content.subreports_csv_bundled:
+            for name, csv in subreport_csv_files(self._content.subreports).items():
+                files.append(("files", (f"subreport_{name}", csv, "text/csv")))
+        for name, _, image in subreport_image_files(self._content.subreports):
+            files.append(("files", (f"subreport_{name}", image, "image/png")))
         return files
 
     def _validate_webhook_url(self, url: str) -> None:

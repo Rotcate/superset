@@ -9087,6 +9087,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "parent_schedule_id": {
+            "description": "Parent report schedule. Child schedules are delivered with their parent and are not scheduled independently.",
+            "nullable": true,
+            "type": "integer"
+          },
           "recipients": {
             "items": {
               "$ref": "#/components/schemas/ReportRecipient"
@@ -9135,6 +9140,13 @@
             "description": "A SQL statement that defines whether the alert should get triggered or not. The query is expected to return either NULL or a number value.",
             "example": "SELECT value FROM time_series_table",
             "type": "string"
+          },
+          "subreports": {
+            "description": "Ordered SQL subreports",
+            "items": {
+              "$ref": "#/components/schemas/Subreport"
+            },
+            "type": "array"
           },
           "timezone": {
             "description": "A timezone string that represents the location of the timezone.",
@@ -9864,6 +9876,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "parent_schedule_id": {
+            "description": "Parent report schedule. Child schedules are delivered with their parent and are not scheduled independently.",
+            "nullable": true,
+            "type": "integer"
+          },
           "recipients": {
             "items": {
               "$ref": "#/components/schemas/ReportRecipient"
@@ -9908,6 +9925,13 @@
             "example": "SELECT value FROM time_series_table",
             "nullable": true,
             "type": "string"
+          },
+          "subreports": {
+            "description": "Ordered SQL subreports",
+            "items": {
+              "$ref": "#/components/schemas/Subreport"
+            },
+            "type": "array"
           },
           "timezone": {
             "description": "A timezone string that represents the location of the timezone.",
@@ -11595,6 +11619,209 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "Subreport": {
+        "properties": {
+          "database_id": {
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 150,
+            "minLength": 1,
+            "type": "string"
+          },
+          "param_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Maps SQL parameters to parent fields",
+            "example": {
+              "customer_id": "$F{customer_id}"
+            },
+            "type": "object"
+          },
+          "position": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sql_query": {
+            "description": "A single read-only SELECT. Use named parameters like :customer_id bound through param_mapping.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "template": {
+            "nullable": true,
+            "type": "object"
+          },
+          "viz_type": {
+            "default": "table",
+            "enum": [
+              "table",
+              "chart"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "name",
+          "sql_query"
+        ],
+        "type": "object"
+      },
+      "SubreportContextFieldSchema": {
+        "properties": {
+          "filter_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "filter_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "label": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reference": {
+            "example": "$F{customer_id}",
+            "type": "string"
+          },
+          "source": {
+            "description": "native_filter or chart_data",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SubreportPreviewPostSchema": {
+        "properties": {
+          "database_id": {
+            "type": "integer"
+          },
+          "param_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "row_limit": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sql_query": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "values": {
+            "description": "Explicit parent field values for the preview",
+            "example": {
+              "customer_id": [
+                1,
+                2
+              ]
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "database_id",
+          "sql_query"
+        ],
+        "type": "object"
+      },
+      "SubreportResponseSchema": {
+        "properties": {
+          "database_id": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "param_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "parent_schedule_id": {
+            "type": "integer"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "sql_query": {
+            "type": "string"
+          },
+          "template": {
+            "type": "object"
+          },
+          "uuid": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "viz_type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SubreportSchema": {
+        "properties": {
+          "database_id": {
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 150,
+            "minLength": 1,
+            "type": "string"
+          },
+          "param_mapping": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Maps SQL parameters to parent fields",
+            "example": {
+              "customer_id": "$F{customer_id}"
+            },
+            "type": "object"
+          },
+          "position": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sql_query": {
+            "description": "A single read-only SELECT. Use named parameters like :customer_id bound through param_mapping.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "template": {
+            "nullable": true,
+            "type": "object"
+          },
+          "viz_type": {
+            "default": "table",
+            "enum": [
+              "table",
+              "chart"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "database_id",
+          "name",
+          "sql_query"
+        ],
         "type": "object"
       },
       "SupersetGroupApi.get": {
@@ -27433,6 +27660,435 @@
         ]
       }
     },
+    "/api/v1/report/{parent_id}/subreport/": {
+      "get": {
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "context_fields": {
+                      "items": {
+                        "$ref": "#/components/schemas/SubreportContextFieldSchema"
+                      },
+                      "type": "array"
+                    },
+                    "result": {
+                      "items": {
+                        "$ref": "#/components/schemas/SubreportResponseSchema"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Ordered subreports and the parent context fields"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List the subreports of a report schedule",
+        "tags": [
+          "Report Schedules"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubreportSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/SubreportResponseSchema"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Subreport created"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create a subreport",
+        "tags": [
+          "Report Schedules"
+        ]
+      }
+    },
+    "/api/v1/report/{parent_id}/subreport/execute_preview": {
+      "post": {
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubreportPreviewPostSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "result": {
+                      "properties": {
+                        "columns": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "data": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "row_count": {
+                          "type": "integer"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Preview rows"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Preview an unsaved subreport",
+        "tags": [
+          "Report Schedules"
+        ]
+      }
+    },
+    "/api/v1/report/{parent_id}/subreport/{pk}": {
+      "delete": {
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The subreport id",
+            "in": "path",
+            "name": "pk",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Subreport deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a subreport",
+        "tags": [
+          "Report Schedules"
+        ]
+      },
+      "get": {
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The subreport id",
+            "in": "path",
+            "name": "pk",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/SubreportResponseSchema"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The subreport"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get a subreport",
+        "tags": [
+          "Report Schedules"
+        ]
+      },
+      "put": {
+        "description": "Partial update. The parent cannot be changed; the merged definition is validated like a new subreport.",
+        "parameters": [
+          {
+            "description": "The parent report schedule id",
+            "in": "path",
+            "name": "parent_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The subreport id",
+            "in": "path",
+            "name": "pk",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubreportSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/SubreportResponseSchema"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Subreport updated"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a subreport",
+        "tags": [
+          "Report Schedules"
+        ]
+      }
+    },
     "/api/v1/report/{pk}": {
       "delete": {
         "parameters": [
@@ -33678,6 +34334,67 @@
         "summary": "Get the result of a SQL query execution",
         "tags": [
           "SQL Lab"
+        ]
+      }
+    },
+    "/api/v1/subreport/execute_preview": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SubreportPreviewPostSchema"
+                  },
+                  {
+                    "properties": {
+                      "parent_schedule_id": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "parent_schedule_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Preview rows, same shape as the per-parent preview"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          }
+        },
+        "security": [
+          {
+            "jwt": []
+          },
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Preview an unsaved subreport",
+        "tags": [
+          "Report Schedules"
         ]
       }
     },

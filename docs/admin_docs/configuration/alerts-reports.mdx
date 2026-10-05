@@ -28,6 +28,172 @@ Dashboard reports and alerts are limited to the PDF and PNG formats; the CSV, XL
 
 For alerts (not scheduled reports), PNG/PDF screenshots and chart CSV/XLSX data are only generated when the `ALERTS_ATTACH_REPORTS` [feature flag](/admin-docs/configuration/configuring-superset#feature-flags) is enabled (the default); with it disabled, an alert notification is still sent, but without the attachment.
 
+## Subreports
+
+A report (not an alert) can include **subreports**: parameterized, read-only
+SQL queries whose results are rendered, in order, inside the report
+notification. A report can also be **composed** of other report schedules
+through a parent schedule. Both are part of the `ALERT_REPORTS` feature flag;
+no additional flag is needed.
+
+### Upgrade requirement
+
+Subreports add the `report_subreport` table and the nullable
+`report_schedule.parent_schedule_id` column (migration `4c1d8e2f9a07`). Run
+`superset db upgrade` before enabling them. `superset db downgrade 7e2c9a4f1b83`
+removes both and deletes all subreport definitions and parent links.
+
+### SQL and parameters
+
+- The SQL must be exactly one read-only `SELECT`, which may use CTEs (`WITH`)
+  and set operations such as `UNION`. It is parsed in the dialect of the
+  selected database. Anything else is rejected: multiple statements,
+  `INSERT`/`UPDATE`/`DELETE`/DDL, data-modifying CTEs, `SELECT ... INTO`,
+  `PRAGMA`/`SET`/lock statements, and any SQL that cannot be fully parsed.
+- Jinja templating is not supported in subreport SQL; `{{`, `{%` and `{#` are
+  rejected.
+- Parameters are named value placeholders such as `:customer_id`. They may
+  only stand for values, not table names, column names or `LIMIT`.
+- Each placeholder must be mapped to a parent field in `param_mapping`, using
+  the `$F{field}` syntax:
+
+  ```json
+  {"customer_id": "$F{customer_id}"}
+  ```
+
+- Values are bound as typed SQL literals in the parsed query. They are never
+  concatenated into the SQL text and never rendered as templates.
+
+Example:
+
+```sql
+SELECT order_id, amount
+FROM orders
+WHERE customer_id IN (:customer_id)
+ORDER BY order_id
+```
+
+### Parent context
+
+The fields a subreport can reference depend on the parent:
+
+- **Dashboard reports**: the native filters configured on the report
+  (`extra.dashboard.nativeFilters`). The field name is the filter's
+  `columnName`, and its values are the filter's `filterValues`.
+- **Chart reports**: the columns of the chart's rendered data (its output
+  columns and metric labels). The values are the distinct non-null values of
+  that column in the data the report renders.
+
+The subreport list endpoint returns the available fields as `context_fields`.
+
+### Multiple values
+
+A field can resolve to several values. Superset never silently picks one:
+
+- `column IN (:param)` expands to every value. The number of values is capped
+  by `ALERT_REPORTS_SUBREPORT_MAX_PARAMETER_VALUES`.
+- A scalar use such as `column = :param` with more than one value fails with a
+  validation error.
+- A field with no value fails with a validation error.
+- Two native filters on the same column with different values make the field
+  ambiguous. Any subreport that uses that field fails with a validation error.
+
+If a subreport fails during a scheduled run, the run is marked as an error and
+no partial report is delivered.
+
+### Visualizations and exports
+
+Each subreport has a `viz_type`:
+
+- `table` (default). Optional template keys: `title`, `columns` (the columns to
+  display) and `max_rows`.
+- `chart`, a static bar or line chart image. Template keys: `chart_type`
+  (`bar` or `line`), `x_column`, `y_columns` and an optional `title`.
+
+Sections appear after the parent content in `(position, id)` order. Each
+channel delivers them as follows:
+
+- **Email**: inline HTML tables and inline chart images. Each section with data
+  is also attached as a CSV file named `NN_<name>.csv`.
+- **CSV reports**: the attachment becomes a ZIP that contains the parent CSV
+  and `subreports/NN_<name>.csv`.
+- **PDF reports**: table pages and chart images are appended to the PDF.
+- **Slack v2**: text tables, followed by uploads of chart PNGs and CSV files.
+- **Slack v1**: text tables only. A report with chart images goes through the
+  existing upgrade to Slack v2.
+- **Webhook**: a `subreports` array in the payload, containing `position`,
+  `name`, `kind`, `source`, `columns`, `data`, `row_count` and `truncated`,
+  plus CSV and PNG files.
+
+Results that exceed the row limit are truncated, and the notification says so.
+
+### Nested report schedules
+
+Set a report's `parent_schedule_id` to compose it into another report:
+
+- The parent must be a report that you can see and edit.
+- Self-references and cycles are rejected. Nesting is limited to
+  `ALERT_REPORTS_MAX_SCHEDULE_DEPTH` levels (default 5).
+- A child schedule is never sent on its own schedule. When its parent runs, the
+  child's content (a snapshot, or its chart data as a table) and its own
+  subreports are appended, depth-first. Fields the child does not define are
+  inherited from the parent.
+- Only the root parent's recipients receive the composed report.
+- Inactive children are skipped.
+- The whole composition runs as the root schedule's executor.
+- Changing a subreport or child schedule requires editorship of every enclosing
+  report. Content changes update the audit author of these reports, so the default
+  editor executor is the user who made the change, not an earlier editor with
+  different datasource permissions or RLS rules.
+
+### Permissions and security
+
+- Subreports reuse the `ReportSchedule` permissions. Listing and viewing need
+  `can_read`; creating, updating, deleting and previewing need `can_write`
+  and editorship of the parent report.
+- A subreport can only be reached through its own parent. If the parent is not
+  visible to you, the API returns 404.
+- The database must exist (422 otherwise) and be accessible to you (403
+  otherwise).
+- Saving, previewing and scheduled execution all run the same checks:
+  - dataset or datasource access to every referenced table
+    (`raise_for_access` with `force_dataset_match`)
+  - row level security, always applied whatever the value of `RLS_IN_SQLLAB`
+  - `DISALLOWED_SQL_FUNCTIONS` and `DISALLOWED_SQL_TABLES`
+  - the row limit
+  - `SQL_QUERY_MUTATOR`, after which the SQL is validated again
+- Preview runs as the requesting user. Scheduled runs use the report executor
+  (`ALERT_REPORTS_EXECUTORS`), so that user's permissions and RLS apply.
+
+### API
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/api/v1/report/<parent_id>/subreport/` | Subreports in `(position, id)` order, plus `context_fields` |
+| `POST` | `/api/v1/report/<parent_id>/subreport/` | Body: `name`, `database_id`, `sql_query`, `param_mapping`, `position`, `viz_type`, `template` |
+| `GET` / `PUT` / `DELETE` | `/api/v1/report/<parent_id>/subreport/<id>` | `PUT` accepts a partial body; the parent cannot be changed |
+| `POST` | `/api/v1/report/<parent_id>/subreport/execute_preview` | Body: `database_id`, `sql_query`, `param_mapping`, `values`, `row_limit` |
+| `POST` | `/api/v1/subreport/execute_preview` | Same as above plus a required `parent_schedule_id` |
+
+Preview returns `{"result": {"columns", "data", "row_count", "truncated"}}`.
+Native filter values are used unless the request overrides them in `values`.
+Chart parents have no rendered data at preview time, so their fields must be
+passed in `values`. Report schedule `POST`/`PUT` also accept `parent_schedule_id`
+and a `subreports` list.
+
+### Configuration
+
+```python
+# Maximum rows per subreport. Also capped by SQL_MAX_ROW.
+ALERT_REPORTS_SUBREPORT_ROW_LIMIT = 1000
+# Per-query timeout in seconds. Also bounded by the report execution budget.
+ALERT_REPORTS_SUBREPORT_TIMEOUT_SECONDS = 60
+# Maximum number of values a single IN (:param) can expand to.
+ALERT_REPORTS_SUBREPORT_MAX_PARAMETER_VALUES = 1000
+# Maximum nesting depth of composed report schedules.
+ALERT_REPORTS_MAX_SCHEDULE_DEPTH = 5
+```
+
 ## Requirements
 
 ### Commons

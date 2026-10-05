@@ -25,6 +25,11 @@ from superset.commands.report.exceptions import (
     ReportScheduleForbiddenError,
     ReportScheduleNotFoundError,
 )
+from superset.commands.report.subreport import (
+    get_parent_schedule,
+    mark_composition_changed,
+    validate_composition_editorship,
+)
 from superset.daos.report import ReportScheduleDAO
 from superset.exceptions import SupersetSecurityException
 from superset.reports.models import ReportSchedule
@@ -42,6 +47,11 @@ class DeleteReportScheduleCommand(BaseCommand):
     def run(self) -> None:
         self.validate()
         assert self._models
+        for model in self._models:
+            if model.parent_schedule_id is not None:
+                mark_composition_changed(
+                    get_parent_schedule(model.parent_schedule_id, for_update=True)
+                )
         ReportScheduleDAO.delete(self._models)
 
     def validate(self) -> None:
@@ -56,3 +66,4 @@ class DeleteReportScheduleCommand(BaseCommand):
                 security_manager.raise_for_editorship(model)
             except SupersetSecurityException as ex:
                 raise ReportScheduleForbiddenError() from ex
+            validate_composition_editorship(model)
