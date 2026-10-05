@@ -36,6 +36,10 @@ from superset.commands.report.exceptions import (
     ReportScheduleUpdateFailedError,
     ReportScheduleUserEmailNotFoundError,
 )
+from superset.commands.report.subreport import (
+    apply_nested_subreports,
+    validate_schedule_composition,
+)
 from superset.commands.utils import compute_subjects
 from superset.daos.database import DatabaseDAO
 from superset.daos.report import ReportScheduleDAO
@@ -63,7 +67,11 @@ class UpdateReportScheduleCommand(UpdateMixin, BaseReportScheduleCommand):
     @transaction(on_error=partial(on_error, reraise=ReportScheduleUpdateFailedError))
     def run(self) -> Model:
         self.validate()
-        return ReportScheduleDAO.update(self._model, self._properties)
+        subreports = self._properties.pop("subreports", None)
+        model = ReportScheduleDAO.update(self._model, self._properties)
+        if subreports is not None:
+            apply_nested_subreports(model, subreports)
+        return model
 
     def validate(self) -> None:  # noqa: C901
         """
@@ -185,6 +193,8 @@ class UpdateReportScheduleCommand(UpdateMixin, BaseReportScheduleCommand):
             security_manager.raise_for_editorship(self._model)
         except SupersetSecurityException as ex:
             raise ReportScheduleForbiddenError() from ex
+
+        validate_schedule_composition(self._model, self._properties, exceptions)
 
         compute_subjects(
             self._model,

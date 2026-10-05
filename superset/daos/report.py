@@ -31,6 +31,7 @@ from superset.reports.models import (
     ReportSchedule,
     ReportScheduleType,
     ReportState,
+    Subreport,
 )
 from superset.utils import json
 from superset.utils.core import get_user_id
@@ -391,4 +392,23 @@ class ReportScheduleDAO(BaseDAO[ReportSchedule]):
                 ReportExecutionLog.end_dttm < from_date,
             )
             .delete(synchronize_session="fetch")
+        )
+
+
+class SubreportDAO(BaseDAO[Subreport]):
+    """
+    Subreports have no base filter of their own: callers must resolve the
+    parent through ``ReportScheduleDAO`` (which applies the report schedule
+    base filter) and then use :meth:`find_by_parent`.
+    """
+
+    @staticmethod
+    def find_by_parent(parent_schedule_id: int, subreport_id: int) -> Subreport | None:
+        return (
+            db.session.query(Subreport)
+            .filter(
+                Subreport.id == subreport_id,
+                Subreport.parent_schedule_id == parent_schedule_id,
+            )
+            .one_or_none()
         )

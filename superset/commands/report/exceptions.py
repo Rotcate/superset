@@ -451,3 +451,25 @@ class ReportScheduleCeleryNotConfiguredError(CommandException):
         "Report Schedule execution requires a Celery backend to be configured. "
         "Please configure a Celery broker (Redis or RabbitMQ) and worker processes."
     )
+
+
+class SubreportNotFoundError(CommandException):
+    status = 404
+    message = _("Subreport not found.")
+
+
+class SubreportInvalidError(CommandInvalidError):
+    status = 422
+    message = _("Subreport parameters are invalid.")
+
+
+class SubreportCreateFailedError(CreateFailedError):
+    message = _("Subreport could not be created.")
+
+
+class SubreportUpdateFailedError(CreateFailedError):
+    message = _("Subreport could not be updated.")
+
+
+class SubreportDeleteFailedError(CommandException):
+    message = _("Subreport could not be deleted.")

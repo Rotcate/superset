@@ -32,6 +32,10 @@ from superset.commands.report.exceptions import (
     ReportScheduleNameUniquenessValidationError,
     ReportScheduleUserEmailNotFoundError,
 )
+from superset.commands.report.subreport import (
+    apply_nested_subreports,
+    validate_schedule_composition,
+)
 from superset.commands.utils import populate_subjects
 from superset.daos.database import DatabaseDAO
 from superset.daos.report import ReportScheduleDAO
@@ -54,7 +58,11 @@ class CreateReportScheduleCommand(CreateMixin, BaseReportScheduleCommand):
     @transaction(on_error=partial(on_error, reraise=ReportScheduleCreateFailedError))
     def run(self) -> ReportSchedule:
         self.validate()
-        return ReportScheduleDAO.create(attributes=self._properties)
+        subreports = self._properties.pop("subreports", None)
+        model = ReportScheduleDAO.create(attributes=self._properties)
+        if subreports:
+            apply_nested_subreports(model, subreports)
+        return model
 
     def _populate_recipients(self, exceptions: list[ValidationError]) -> None:
         """
@@ -165,6 +173,8 @@ class CreateReportScheduleCommand(CreateMixin, BaseReportScheduleCommand):
             )
 
         self._populate_subjects(exceptions)
+
+        validate_schedule_composition(None, self._properties, exceptions)
 
         if exceptions:
             raise ReportScheduleInvalidError(exceptions=exceptions)
