@@ -32,13 +32,14 @@ from marshmallow import (
 from marshmallow.validate import Length, Range, ValidationError
 from pytz import all_timezones
 
-from superset import is_feature_enabled
+from superset import db, is_feature_enabled
 from superset.reports.models import (
     ReportCreationMethod,
     ReportDataFormat,
     ReportRecipientType,
     ReportScheduleType,
     ReportScheduleValidatorType,
+    SubreportVizType,
 )
 
 openapi_spec_methods_override = {
@@ -216,6 +217,178 @@ class RetryFieldStripMixin:
         return data
 
 
+def _validate_parent_schedule(
+    schedule_id: int | None, parent_schedule_id: int, schedule_type: str | None
+) -> None:
+    from superset.reports.subreports import (
+        SubreportScheduleError,
+        validate_parent_schedule,
+    )
+
+    try:
+        validate_parent_schedule(
+            schedule_id, parent_schedule_id, schedule_type=schedule_type
+        )
+    except SubreportScheduleError as ex:
+        raise ValidationError({"parent_schedule_id": [ex.message]}) from ex
+
+
+class SubreportTemplateSchema(Schema):
+    """Rendering options; see ``superset.reports.subreports.SubreportTemplate``."""
+
+    title = fields.String(required=False, validate=[Length(0, 250)])
+    columns = fields.List(fields.String(), required=False)
+    max_rows = fields.Integer(required=False, validate=[Range(min=1)])
+    chart_type = fields.String(
+        required=False, validate=validate.OneOf(choices=("bar", "line"))
+    )
+    x_column = fields.String(required=False)
+    y_columns = fields.List(fields.String(), required=False)
+
+
+class SubreportSchema(Schema):
+    """
+    Load schema for a subreport definition.
+
+    :param available_context_fields: The parent's available context field
+        names (``get_available_context_field_names``). When given, every
+        ``$F{field}`` mapping must reference one of them.
+    :param partial_update: When ``True`` all fields are optional; the caller
+        must then validate the merged definition with
+        ``validate_subreport_definition``.
+    """
+
+    name = fields.String(required=True, validate=[Length(1, 150)])
+    sql_query = fields.String(
+        required=True,
+        validate=[Length(1)],
+        metadata={
+            "description": _(
+                "A single read-only SELECT. Use named parameters like "
+                ":customer_id bound through param_mapping."
+            )
+        },
+    )
+    database_id = fields.Integer(required=True)
+    param_mapping = fields.Dict(
+        keys=fields.String(),
+        values=fields.String(),
+        load_default=dict,
+        metadata={
+            "description": _("Maps SQL parameters to parent fields"),
+            "example": {"customer_id": "$F{customer_id}"},
+        },
+    )
+    position = fields.Integer(load_default=0, validate=[Range(min=0)])
+    viz_type = fields.String(
+        load_default=SubreportVizType.TABLE.value,
+        validate=validate.OneOf(choices=tuple(item.value for item in SubreportVizType)),
+    )
+    template = fields.Dict(load_default=dict, allow_none=True)
+
+    def __init__(
+        self,
+        *args: Any,
+        available_context_fields: Optional[set[str]] = None,
+        partial_update: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        if partial_update:
+            kwargs.setdefault("partial", True)
+        super().__init__(*args, **kwargs)
+        self.available_context_fields = available_context_fields
+        self.partial_update = partial_update
+
+    @validates_schema
+    def validate_definition(  # pylint: disable=unused-argument
+        self,
+        data: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        from superset.models.core import Database
+        from superset.reports.subreports import (
+            SubreportError,
+            validate_subreport_definition,
+        )
+
+        template_errors = SubreportTemplateSchema().validate(data.get("template") or {})
+        if template_errors:
+            raise ValidationError({"template": template_errors})
+        if self.partial_update and not {"sql_query", "database_id"} <= set(data):
+            return
+        database = db.session.get(Database, data["database_id"])
+        if database is None:
+            raise ValidationError({"database_id": [_("Database not found")]})
+        try:
+            validate_subreport_definition(
+                sql_query=data["sql_query"],
+                database=database,
+                param_mapping=data.get("param_mapping") or {},
+                viz_type=data.get("viz_type", SubreportVizType.TABLE.value),
+                template=data.get("template") or {},
+                available_fields=self.available_context_fields,
+            )
+        except SubreportError as ex:
+            raise ValidationError({"sql_query": [ex.message]}) from ex
+
+
+class SubreportResponseSchema(Schema):
+    id = fields.Integer()
+    uuid = fields.UUID()
+    parent_schedule_id = fields.Integer()
+    name = fields.String()
+    sql_query = fields.String()
+    database_id = fields.Integer()
+    param_mapping = fields.Dict(keys=fields.String(), values=fields.String())
+    position = fields.Integer()
+    viz_type = fields.String()
+    template = fields.Dict()
+
+
+class SubreportContextFieldSchema(Schema):
+    name = fields.String()
+    source = fields.String(
+        metadata={"description": "native_filter or chart_data"},
+    )
+    label = fields.String(allow_none=True)
+    filter_id = fields.String(allow_none=True)
+    filter_type = fields.String(allow_none=True)
+    reference = fields.String(metadata={"example": "$F{customer_id}"})
+
+
+class SubreportContextResponseSchema(Schema):
+    fields_ = fields.List(fields.Nested(SubreportContextFieldSchema), data_key="fields")
+
+
+class SubreportPreviewPostSchema(Schema):
+    database_id = fields.Integer(required=True)
+    sql_query = fields.String(required=True, validate=[Length(1)])
+    param_mapping = fields.Dict(
+        keys=fields.String(), values=fields.String(), load_default=dict
+    )
+    values = fields.Dict(
+        keys=fields.String(),
+        load_default=dict,
+        metadata={
+            "description": _("Explicit parent field values for the preview"),
+            "example": {"customer_id": [1, 2]},
+        },
+    )
+    row_limit = fields.Integer(required=False, validate=[Range(min=1)])
+
+
+class SubreportDataColumnSchema(Schema):
+    name = fields.String()
+    type = fields.String()
+
+
+class SubreportDataResponseSchema(Schema):
+    columns = fields.List(fields.Nested(SubreportDataColumnSchema))
+    data = fields.List(fields.Dict())
+    row_count = fields.Integer()
+    truncated = fields.Boolean()
+
+
 class ReportSchedulePostSchema(RetryFieldStripMixin, Schema):
     type = fields.String(
         metadata={"description": type_description},
@@ -353,6 +526,22 @@ class ReportSchedulePostSchema(RetryFieldStripMixin, Schema):
         load_default=False,
     )
 
+    subreports = fields.List(
+        fields.Nested(SubreportSchema),
+        required=False,
+        metadata={"description": _("Ordered SQL subreports")},
+    )
+    parent_schedule_id = fields.Integer(
+        metadata={
+            "description": _(
+                "Parent report schedule. Child schedules are delivered with "
+                "their parent and are not scheduled independently."
+            )
+        },
+        allow_none=True,
+        required=False,
+    )
+
     @validates("custom_width")
     def validate_custom_width(
         self,
@@ -384,6 +573,16 @@ class ReportSchedulePostSchema(RetryFieldStripMixin, Schema):
                 raise ValidationError(
                     {"database": ["Database reference is not allowed on a report"]}
                 )
+
+    @validates_schema
+    def validate_parent_schedule(  # pylint: disable=unused-argument
+        self,
+        data: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        if data.get("parent_schedule_id") is None:
+            return
+        _validate_parent_schedule(None, data["parent_schedule_id"], data.get("type"))
 
     @validates_schema
     def validate_retry_config(  # pylint: disable=unused-argument
@@ -430,7 +629,13 @@ class ReportScheduleSubscribeSchema(ReportSchedulePostSchema):
     )
 
     class Meta:
-        exclude = ("recipients", "creation_method", "editors")
+        exclude = (
+            "recipients",
+            "creation_method",
+            "editors",
+            "subreports",
+            "parent_schedule_id",
+        )
         unknown = EXCLUDE
 
 
@@ -572,6 +777,52 @@ class ReportSchedulePutSchema(RetryFieldStripMixin, Schema):
         metadata={"description": _("Notify report recipients on each retry attempt")},
         required=False,
     )
+
+    subreports = fields.List(
+        fields.Nested(SubreportSchema),
+        required=False,
+        metadata={"description": _("Ordered SQL subreports")},
+    )
+    parent_schedule_id = fields.Integer(
+        metadata={
+            "description": _(
+                "Parent report schedule. Child schedules are delivered with "
+                "their parent and are not scheduled independently."
+            )
+        },
+        allow_none=True,
+        required=False,
+    )
+
+    def __init__(
+        self, *args: Any, report_schedule_id: int | None = None, **kwargs: Any
+    ):
+        """
+        :param report_schedule_id: Id of the schedule being updated. Required to
+            accept ``parent_schedule_id`` so cycles can always be checked.
+        """
+        super().__init__(*args, **kwargs)
+        self.report_schedule_id = report_schedule_id
+
+    @validates_schema
+    def validate_parent_schedule(  # pylint: disable=unused-argument
+        self,
+        data: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        if data.get("parent_schedule_id") is None:
+            return
+        if self.report_schedule_id is None:
+            raise ValidationError(
+                {
+                    "parent_schedule_id": [
+                        _("parent_schedule_id requires the schedule being updated")
+                    ]
+                }
+            )
+        _validate_parent_schedule(
+            self.report_schedule_id, data["parent_schedule_id"], data.get("type")
+        )
 
     @validates("custom_width")
     def validate_custom_width(

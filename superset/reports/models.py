@@ -17,6 +17,7 @@
 """A collection of ORM sqlalchemy models for Superset"""
 
 import logging
+import uuid
 from typing import Any, Optional
 
 import rison
@@ -30,6 +31,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -102,6 +104,13 @@ class ReportCreationMethod(StrEnum):
 class ReportSourceFormat(StrEnum):
     CHART = "chart"
     DASHBOARD = "dashboard"
+
+
+class SubreportVizType(StrEnum):
+    """How a subreport result is rendered inside the parent notification."""
+
+    TABLE = "table"
+    CHART = "chart"
 
 
 class ReportSchedule(AuditMixinNullable, ExtraJSONMixin, Model):
@@ -191,6 +200,28 @@ class ReportSchedule(AuditMixinNullable, ExtraJSONMixin, Model):
     # (Alerts/Reports) Include the call-to-action link back to Superset in
     # notifications? NULL is treated as True.
     include_cta = Column(Boolean, default=True, nullable=True)
+
+    # (Reports) Nested schedule composition: a child schedule is rendered as
+    # part of its parent's delivery and is not scheduled independently.
+    # Deleting a parent detaches (does not delete) its children, since a child
+    # may be edited by principals other than the parent's editors.
+    parent_schedule_id = Column(
+        Integer,
+        ForeignKey("report_schedule.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    parent_schedule = relationship(
+        "ReportSchedule",
+        remote_side=[id],
+        foreign_keys=[parent_schedule_id],
+        backref=backref(
+            "children",
+            passive_deletes=True,
+            cascade_backrefs=False,
+            order_by="ReportSchedule.id",
+        ),
+    )
 
     def __repr__(self) -> str:
         return str(self.name)
@@ -452,3 +483,49 @@ class ReportExecutionLog(Model):  # pylint: disable=too-few-public-methods
         Index("ix_report_execution_log_report_schedule_id", report_schedule_id),
         Index("ix_report_execution_log_start_dttm", start_dttm),
     )
+
+
+class Subreport(AuditMixinNullable, Model):
+    """
+    A parameterized, read-only SQL query rendered as an ordered table or chart
+    inside a parent report schedule's notification.
+    """
+
+    __tablename__ = "report_subreport"
+
+    id = Column(Integer, primary_key=True)
+    uuid = Column(UUIDType(binary=True), unique=True, default=uuid.uuid4)
+    parent_schedule_id = Column(
+        Integer,
+        ForeignKey("report_schedule.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name = Column(String(150), nullable=False)
+    sql_query = Column(Text, nullable=False)
+    database_id = Column(Integer, ForeignKey("dbs.id"), nullable=False)
+    database = relationship(Database, foreign_keys=[database_id])
+    # ``{"<placeholder>": "$F{<context field>}"}``
+    param_mapping = Column(JSON, nullable=True, default=dict)
+    position = Column(Integer, nullable=False, default=0)
+    viz_type = Column(String(50), nullable=False, default=SubreportVizType.TABLE)
+    # Rendering options, see ``superset.reports.subreports.SubreportTemplate``
+    template = Column(JSON, nullable=True, default=dict)
+
+    parent_schedule = relationship(
+        ReportSchedule,
+        backref=backref(
+            "subreports",
+            cascade="all,delete,delete-orphan",
+            passive_deletes=True,
+            cascade_backrefs=False,
+            order_by="(Subreport.position, Subreport.id)",
+        ),
+        foreign_keys=[parent_schedule_id],
+    )
+
+    __table_args__ = (
+        Index("ix_report_subreport_parent_schedule_id", parent_schedule_id),
+    )
+
+    def __repr__(self) -> str:
+        return str(self.name)
