@@ -111,6 +111,7 @@ type DashboardPropertiesUpdate = {
   jsonMetadata?: string;
   certifiedBy?: string;
   certificationDetails?: string;
+  contact?: string;
   editors?: Subject[];
   tags?: TagType[];
   theme?: { id: number; theme_name: string; json_data: string } | null;
@@ -132,6 +133,7 @@ type DashboardInfoState = RootState['dashboardInfo'] & {
   last_modified_time?: number;
   certified_by?: string;
   certification_details?: string;
+  contact?: string;
   tags?: TagType[];
   metadata: RootState['dashboardInfo']['metadata'] & {
     timed_refresh_immune_slices?: number[];
@@ -448,6 +450,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     const data = {
       certified_by: dashboardInfo.certified_by,
       certification_details: dashboardInfo.certification_details,
+      contact: dashboardInfo.contact,
       css: customCss,
       dashboard_title: dashboardTitle,
       last_modified_time: actualLastModifiedTime,
@@ -500,6 +503,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     dashboardInfo.certification_details,
     dashboardInfo.certified_by,
     dashboardInfo.common?.conf?.SUPERSET_DASHBOARD_POSITION_DATA_LIMIT,
+    dashboardInfo.contact,
     dashboardInfo.id,
     dashboardInfo.metadata,
     dashboardInfo.editors,
@@ -584,6 +588,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
         metadata: JSON.parse(updates.jsonMetadata || '{}'),
         certified_by: updates.certifiedBy,
         certification_details: updates.certificationDetails,
+        contact: updates.contact,
         editors: updates.editors,
         tags: updates.tags,
         // Conditional spread: omit `theme` key entirely when undefined

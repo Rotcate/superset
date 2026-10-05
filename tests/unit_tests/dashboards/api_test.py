@@ -47,6 +47,7 @@ def mock_dashboard() -> MagicMock:
     dash.position_json = "{}"
     dash.certified_by = None
     dash.certification_details = None
+    dash.contact = None
     dash.changed_by_name = "admin"
     dash.changed_by = MagicMock(id=1, first_name="admin", last_name="user")
     dash.changed_on = None
@@ -215,3 +216,10 @@ def test_put_repairs_a_stored_layout_that_cannot_be_walked(
     assert json.loads(
         db.session.query(Dashboard).get(dashboard_id).position_json
     ) == json.loads(repaired)
+
+
+def test_schema_response_includes_contact(mock_dashboard: MagicMock) -> None:
+    """The free-text ``contact`` field is exposed on the GET response."""
+    mock_dashboard.contact = "Jane Doe <jane@example.com>"
+    result = DashboardGetResponseSchema().dump(mock_dashboard)
+    assert result["contact"] == "Jane Doe <jane@example.com>"

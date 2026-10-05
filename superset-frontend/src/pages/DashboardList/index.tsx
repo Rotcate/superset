@@ -120,6 +120,7 @@ export interface Dashboard {
   url: string;
   changed_on_utc?: string;
   description?: string;
+  contact?: string | null;
   thumbnail_url?: string | null;
   editors?: Subject[];
   // Bare subject ids from a deployment's EXTRA_EDITORS_RESOLVER.
@@ -173,6 +174,7 @@ const DASHBOARD_COLUMNS_TO_FETCH = [
   'status',
   'certified_by',
   'certification_details',
+  'contact',
   'changed_on',
   ...(isFeatureEnabled(FeatureFlag.EnableViewers)
     ? ['viewers.id', 'viewers.label', 'viewers.img', 'viewers.type']
@@ -297,6 +299,7 @@ function DashboardList(props: DashboardListProps) {
                 url = '',
                 certified_by: certifiedBy = '',
                 certification_details: certificationDetails = '',
+                contact = '',
                 editors,
                 viewers,
                 tags,
@@ -313,6 +316,7 @@ function DashboardList(props: DashboardListProps) {
                 url,
                 certified_by: certifiedBy,
                 certification_details: certificationDetails,
+                contact,
                 editors,
                 viewers,
                 tags,
@@ -498,6 +502,19 @@ function DashboardList(props: DashboardListProps) {
             },
           ]
         : []),
+      {
+        Cell: ({
+          row: {
+            original: { contact },
+          },
+        }: {
+          row: { original: { contact?: string | null } };
+        }) => <span title={contact || ''}>{contact || ''}</span>,
+        Header: t('Contact'),
+        accessor: 'contact',
+        id: 'contact',
+        disableSortBy: true,
+      },
       {
         Cell: ({
           row: {

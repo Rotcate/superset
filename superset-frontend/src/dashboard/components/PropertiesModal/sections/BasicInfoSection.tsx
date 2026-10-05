@@ -86,6 +86,22 @@ const BasicInfoSection = ({
           />
         </FormItem>
       </ModalFormField>
+      <ModalFormField
+        label={t('Contact')}
+        helperText={t(
+          'Who to contact about this dashboard, shown in the Dashboards list.',
+        )}
+        testId="dashboard-contact-field"
+        bottomSpacing={false}
+      >
+        <FormItem name="contact" noStyle>
+          <Input
+            placeholder={t('Name, email or Slack handle')}
+            data-test="dashboard-contact-input"
+            type="text"
+          />
+        </FormItem>
+      </ModalFormField>
     </>
   );
 };
