@@ -56,6 +56,11 @@ from superset.reports.notifications.slack_transport import (
     send_to_slack_channels,
     SlackChannelResponseError,
 )
+from superset.reports.notifications.subreports import (
+    slack_section_title,
+    subreport_csv_entries,
+    subreport_image_files,
+)
 from superset.utils.decorators import statsd_gauge
 from superset.utils.slack import (
     get_slack_client,
@@ -175,7 +180,10 @@ class SlackV2Notification(SlackMixin, BaseNotification):  # pylint: disable=too-
         self,
     ) -> tuple[str | None, list[bytes]]:
         if self._content.csv:
-            return ("csv", [self._content.csv])
+            return (
+                "zip" if self._content.subreports_csv_bundled else "csv",
+                [self._content.csv],
+            )
         if self._content.xlsx:
             return ("xlsx", [self._content.xlsx])
         if self._content.screenshots:
@@ -183,6 +191,56 @@ class SlackV2Notification(SlackMixin, BaseNotification):  # pylint: disable=too-
         if self._content.pdf:
             return ("pdf", [self._content.pdf])
         return (None, [])
+
+    def _get_subreport_files(self) -> list[tuple[str, str, bytes]]:
+        """``(file_name, comment, data)`` for subreport images and CSV exports."""
+        files = [
+            (name, slack_section_title(content), image)
+            for name, content, image in subreport_image_files(self._content.subreports)
+        ]
+        if not self._content.subreports_csv_bundled:
+            files.extend(
+                (name, slack_section_title(content), csv)
+                for name, content, csv in subreport_csv_entries(
+                    self._content.subreports
+                )
+            )
+        return files
+
+    @staticmethod
+    def _send_parent(  # pylint: disable=too-many-arguments
+        client: WebClient,
+        channel: str,
+        retry_deadline: float,
+        *,
+        body: str,
+        title: str,
+        file_type: str | None,
+        files: list[bytes],
+    ) -> None:
+        if len(files) > 0:
+            if file_type is None:
+                raise SlackChannelResponseError(
+                    "Slack upload file type was not provided"
+                )
+            file_name = f"{title}.{file_type}"
+            for file in files:
+                _upload_file_to_slack(
+                    client,
+                    retry_deadline=retry_deadline,
+                    channel=channel,
+                    file=file,
+                    initial_comment=body,
+                    title=title,
+                    filename=file_name,
+                )
+        else:
+            send_slack_text(
+                client,
+                channel,
+                body,
+                retry_deadline=retry_deadline,
+            )
 
     @statsd_gauge("reports.slack.send")
     def send(self) -> None:
@@ -198,30 +256,27 @@ class SlackV2Notification(SlackMixin, BaseNotification):  # pylint: disable=too-
                 raise NotificationParamException(NO_SLACK_RECIPIENTS_MESSAGE)
 
             file_type, files = self._get_inline_files()
+            subreport_files = self._get_subreport_files()
 
             def send_to_channel(channel: str, retry_deadline: float) -> None:
-                if len(files) > 0:
-                    if file_type is None:
-                        raise SlackChannelResponseError(
-                            "Slack upload file type was not provided"
-                        )
-                    file_name = f"{title}.{file_type}"
-                    for file in files:
-                        _upload_file_to_slack(
-                            client,
-                            retry_deadline=retry_deadline,
-                            channel=channel,
-                            file=file,
-                            initial_comment=body,
-                            title=title,
-                            filename=file_name,
-                        )
-                else:
-                    send_slack_text(
+                self._send_parent(
+                    client,
+                    channel,
+                    retry_deadline,
+                    body=body,
+                    title=title,
+                    file_type=file_type,
+                    files=files,
+                )
+                for file_name, comment, data in subreport_files:
+                    _upload_file_to_slack(
                         client,
-                        channel,
-                        body,
                         retry_deadline=retry_deadline,
+                        channel=channel,
+                        file=data,
+                        initial_comment=comment,
+                        title=file_name,
+                        filename=file_name,
                     )
 
             send_to_slack_channels(

@@ -14,13 +14,35 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from dataclasses import dataclass
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional
 
 import pandas as pd
 
 from superset.reports.models import ReportRecipients, ReportRecipientType
 from superset.utils.core import HeaderDataType
+
+SubreportContentKind = Literal["table", "chart", "snapshot"]
+
+
+@dataclass
+class SubreportContent:
+    """
+    One ordered section rendered after the parent report's own content.
+
+    ``table`` sections carry ``data``; ``chart`` sections carry ``data`` and the
+    rendered PNG in ``images``; ``snapshot`` sections carry screenshots of a
+    composed child schedule's chart or dashboard in ``images``.
+    """
+
+    name: str
+    kind: SubreportContentKind
+    data: Optional[pd.DataFrame] = None
+    images: list[bytes] = field(default_factory=list)
+    truncated: bool = False
+    row_limit: Optional[int] = None
+    # Name of the composed child schedule that produced this section, if any
+    source: Optional[str] = None
 
 
 @dataclass
@@ -40,11 +62,21 @@ class NotificationContent:
     retry_attempt: Optional[int] = None
     retry_max_attempts: Optional[int] = None
     include_cta: bool = True  # include the call-to-action link back to Superset
+    # Ordered subreport and composed child schedule sections
+    subreports: list[SubreportContent] = field(default_factory=list)
+    # ``csv`` is a ZIP that already bundles every subreport CSV export
+    subreports_csv_bundled: bool = False
 
     @property
     def has_attachments(self) -> bool:
         """Return whether the notification contains any file attachment."""
-        return bool(self.csv or self.xlsx or self.pdf or self.screenshots)
+        return bool(
+            self.csv
+            or self.xlsx
+            or self.pdf
+            or self.screenshots
+            or any(item.images for item in self.subreports)
+        )
 
 
 class BaseNotification:  # pylint: disable=too-few-public-methods

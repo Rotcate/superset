@@ -53,6 +53,7 @@ from superset.commands.report.exceptions import (
     ReportScheduleScreenshotFailedError,
     ReportScheduleScreenshotTimeout,
     ReportScheduleStateNotFoundError,
+    ReportScheduleSubreportFailedError,
     ReportScheduleSystemErrorsException,
     ReportScheduleTargetChartDeletedError,
     ReportScheduleTargetDashboardDeletedError,
@@ -82,7 +83,7 @@ from superset.reports.models import (
     ReportState,
 )
 from superset.reports.notifications import create_notification
-from superset.reports.notifications.base import NotificationContent
+from superset.reports.notifications.base import NotificationContent, SubreportContent
 from superset.reports.notifications.exceptions import (
     NotificationError,
     NotificationParamException,
@@ -90,6 +91,22 @@ from superset.reports.notifications.exceptions import (
 from superset.reports.notifications.slack import SlackNotification
 from superset.reports.notifications.slack_transport import (
     get_slack_send_retry_deadline,
+)
+from superset.reports.notifications.subreports import (
+    bundle_csv,
+    display_frame,
+    render_chart_png,
+    render_pdf_pages,
+    SubreportRenderError,
+)
+from superset.reports.subreports import (
+    execute_subreport,
+    get_timeout_seconds,
+    resolve_context,
+    sort_subreports,
+    SubreportContext,
+    SubreportError,
+    SubreportResult,
 )
 from superset.subjects.types import SubjectType
 from superset.tasks.utils import get_executor
@@ -295,6 +312,43 @@ def persist_owned_report_execution_terminal_error(
         return False
 
 
+def _related(value: Any) -> list[Any]:
+    """Loaded relationship collection, or ``[]`` when it is not a list."""
+    return list(value) if isinstance(value, (list, tuple)) else []
+
+
+def _composed_children(report_schedule: ReportSchedule) -> list[ReportSchedule]:
+    """Active report children delivered as part of ``report_schedule``."""
+    return sorted(
+        (
+            child
+            for child in _related(getattr(report_schedule, "children", None))
+            if child.active and child.type == ReportScheduleType.REPORT
+        ),
+        key=lambda child: child.id,
+    )
+
+
+def _inherit_context(
+    context: SubreportContext, inherited: SubreportContext | None
+) -> SubreportContext:
+    """
+    Fill fields the child schedule does not provide itself from its parent's
+    context. The child's own values and errors always take precedence, and an
+    ambiguous parent field stays ambiguous.
+    """
+    if inherited is None:
+        return context
+    merged = SubreportContext(values=dict(context.values), errors=dict(context.errors))
+    for name, values in inherited.values.items():
+        if name not in merged.values and name not in merged.errors:
+            merged.values[name] = list(values)
+    for name, error in inherited.errors.items():
+        if name not in merged.values and name not in merged.errors:
+            merged.errors[name] = error
+    return merged
+
+
 class BaseReportState:
     current_states: list[ReportState] = []
     initial: bool = False
@@ -313,6 +367,9 @@ class BaseReportState:
         self._execution_id = execution_id
         self._report_execution_context = report_execution_context
         self._execution_warnings: list[str] = []
+        # Composed child schedules render as the delivering (root) schedule's
+        # executor so recipients only receive data that executor may access
+        self._executor_schedule = report_schedule
         self._slack_v1_upgrade = SlackV1UpgradeCoordinator(
             report_schedule,
             execution_id,
@@ -766,7 +823,7 @@ class BaseReportState:
         """
         start_time: datetime = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        user, _ = resolve_executor_user(self._report_schedule)
+        user, _ = resolve_executor_user(self._executor_schedule)
 
         max_width = app.config["ALERT_REPORTS_MAX_CUSTOM_SCREENSHOT_WIDTH"]
 
@@ -876,12 +933,12 @@ class BaseReportState:
             raise ReportScheduleScreenshotFailedError()
         return imges
 
-    def _get_pdf(self) -> bytes:
+    def _get_pdf(self, extra_pages: Sequence[bytes] = ()) -> bytes:
         """
-        Get chart or dashboard pdf
+        Get chart or dashboard pdf, followed by any ``extra_pages`` PNG images
         :raises: ReportSchedulePdfFailedError
         """
-        screenshots = self._get_screenshots()
+        screenshots = [*self._get_screenshots(), *extra_pages]
         reserve_seconds = (
             self._report_execution_context.post_capture_reserve_seconds
             if self._report_execution_context
@@ -1031,7 +1088,7 @@ class BaseReportState:
             )
 
         start_time: datetime = datetime.now(timezone.utc).replace(tzinfo=None)
-        user, username = resolve_executor_user(self._report_schedule)
+        user, username = resolve_executor_user(self._executor_schedule)
         auth_cookies = machine_auth_provider_factory.instance.get_auth_cookies(user)
 
         if self._report_schedule.chart.query_context is None:
@@ -1134,7 +1191,7 @@ class BaseReportState:
         start_time: datetime = datetime.now(timezone.utc).replace(tzinfo=None)
 
         url = self._get_url(result_format=ChartDataResultFormat.JSON)
-        user, username = resolve_executor_user(self._report_schedule)
+        user, username = resolve_executor_user(self._executor_schedule)
         auth_cookies = machine_auth_provider_factory.instance.get_auth_cookies(user)
 
         if self._report_schedule.chart.query_context is None:
@@ -1273,6 +1330,9 @@ class BaseReportState:
         # NULL (rows predating the include_cta column) is treated as True
         include_cta = self._report_schedule.include_cta is not False
 
+        chart_data = self._get_subreport_chart_data()
+        subreports = self._get_subreport_sections(chart_data)
+
         if (
             feature_flag_manager.is_feature_enabled("ALERTS_ATTACH_REPORTS")
             or self._report_schedule.type == ReportScheduleType.REPORT
@@ -1282,7 +1342,7 @@ class BaseReportState:
                 if not screenshot_data:
                     error_text = "Unexpected missing screenshot"
             elif self._report_schedule.report_format == ReportDataFormat.PDF:
-                pdf_data = self._get_pdf()
+                pdf_data = self._get_pdf(render_pdf_pages(subreports))
                 if not pdf_data:
                     error_text = "Unexpected missing pdf"
             elif (
@@ -1315,7 +1375,9 @@ class BaseReportState:
             self._report_schedule.chart
             and self._report_schedule.report_format == ReportDataFormat.TEXT
         ):
-            embedded_data = self._get_embedded_data()
+            embedded_data = (
+                chart_data if chart_data is not None else self._get_embedded_data()
+            )
 
         if self._report_schedule.email_subject:
             name = sanitize_title(self._report_schedule.email_subject)
@@ -1331,6 +1393,11 @@ class BaseReportState:
                     f"{self._report_schedule.dashboard.dashboard_title}"
                 )
 
+        subreports_csv_bundled = False
+        if csv_data and subreports:
+            csv_data = bundle_csv(name, csv_data, subreports)
+            subreports_csv_bundled = True
+
         return NotificationContent(
             name=name,
             url=url,
@@ -1343,6 +1410,197 @@ class BaseReportState:
             header_data=header_data,
             slack_retry_deadline=self._get_slack_retry_deadline(),
             include_cta=include_cta,
+            subreports=subreports,
+            subreports_csv_bundled=subreports_csv_bundled,
+        )
+
+    def _has_composition(self) -> bool:
+        return bool(
+            _related(getattr(self._report_schedule, "subreports", None))
+            or _composed_children(self._report_schedule)
+        )
+
+    def _get_subreport_chart_data(self) -> pd.DataFrame | None:
+        """
+        Rendered parent chart data used as subreport context. Fetched once and
+        only for chart schedules that have subreports or composed children.
+        """
+        if self._report_schedule.chart is None or not self._has_composition():
+            return None
+        return self._get_embedded_data()
+
+    def _get_subreport_sections(
+        self, chart_data: pd.DataFrame | None
+    ) -> list[SubreportContent]:
+        """
+        Ordered subreport sections of this schedule followed by those of its
+        composed child schedules. Returns ``[]`` without doing any work when
+        there is nothing to compose, so existing reports are unaffected.
+
+        :raises ReportScheduleSubreportFailedError: If any section fails; a
+            partial report is never delivered
+        """
+        if not self._has_composition():
+            return []
+        max_depth = int(app.config.get("ALERT_REPORTS_MAX_SCHEDULE_DEPTH", 5))
+        sections: list[SubreportContent] = []
+        context = self._run_subreports(
+            self._report_schedule, chart_data, None, sections, prefix=None
+        )
+        seen = {self._report_schedule.id}
+
+        def walk(
+            node: ReportSchedule, node_context: SubreportContext, depth: int
+        ) -> None:
+            for child in _composed_children(node):
+                if child.id in seen:
+                    raise ReportScheduleSubreportFailedError(
+                        "Report schedule nesting forms a cycle."
+                    )
+                if depth > max_depth:
+                    raise ReportScheduleSubreportFailedError(
+                        "Report schedule nesting exceeds the maximum depth."
+                    )
+                seen.add(child.id)
+                child_context = self._compose_child(child, node_context, sections)
+                walk(child, child_context, depth + 1)
+
+        walk(self._report_schedule, context, 1)
+        return sections
+
+    def _compose_child(
+        self,
+        child: ReportSchedule,
+        inherited: SubreportContext,
+        sections: list[SubreportContent],
+    ) -> SubreportContext:
+        """Append a composed child schedule's own content and subreports."""
+        state = BaseReportState(
+            child,
+            self._scheduled_dttm,
+            self._execution_id,
+            self._report_execution_context,
+        )
+        state._executor_schedule = self._executor_schedule
+        child_name = child.name
+        chart_data: pd.DataFrame | None = None
+        try:
+            if child.chart is not None and (
+                child.report_format in ReportDataFormat.tabular()
+                or child.report_format == ReportDataFormat.TEXT
+                or _related(child.subreports)
+            ):
+                chart_data = state._get_embedded_data()
+            if (
+                child.chart is not None
+                and chart_data is not None
+                and (
+                    child.report_format in ReportDataFormat.tabular()
+                    or child.report_format == ReportDataFormat.TEXT
+                )
+            ):
+                sections.append(
+                    SubreportContent(
+                        name=child_name,
+                        kind="table",
+                        data=chart_data,
+                        source=child_name,
+                    )
+                )
+            else:
+                sections.append(
+                    SubreportContent(
+                        name=child_name,
+                        kind="snapshot",
+                        images=state._get_screenshots(),
+                        source=child_name,
+                    )
+                )
+        except (SoftTimeLimitExceeded, ReportExecutionBudgetExceededError):
+            raise
+        except CommandException as ex:
+            logger.warning(
+                "Composed report schedule %s failed - execution_id: %s",
+                child.id,
+                self._execution_id,
+                exc_info=True,
+            )
+            raise ReportScheduleSubreportFailedError(
+                f"Composed report {child_name} could not be generated.",
+                exception=ex,
+            ) from ex
+        return self._run_subreports(
+            child, chart_data, inherited, sections, prefix=child_name
+        )
+
+    def _run_subreports(
+        self,
+        schedule: ReportSchedule,
+        chart_data: pd.DataFrame | None,
+        inherited: SubreportContext | None,
+        sections: list[SubreportContent],
+        *,
+        prefix: str | None,
+    ) -> SubreportContext:
+        """
+        Execute ``schedule``'s subreports once each, ordered by (position, id),
+        appending one section per subreport. Returns the context so composed
+        children can inherit it.
+        """
+        context = _inherit_context(
+            resolve_context(schedule, chart_data=chart_data), inherited
+        )
+        for subreport in sort_subreports(_related(schedule.subreports)):
+            name = f"{prefix}: {subreport.name}" if prefix else subreport.name
+            timeout = self._phase_timeout(
+                "subreport_query", requested_seconds=get_timeout_seconds()
+            )
+            try:
+                result = execute_subreport(
+                    subreport,
+                    context,
+                    timeout_seconds=max(1, int(timeout)) if timeout else None,
+                )
+                sections.append(self._build_section(name, result, prefix))
+            except (SoftTimeLimitExceeded, ReportExecutionBudgetExceededError):
+                raise
+            except (SubreportError, SubreportRenderError) as ex:
+                # Helper messages never include database error details
+                logger.warning(
+                    "Subreport %s failed - execution_id: %s",
+                    subreport.id,
+                    self._execution_id,
+                    exc_info=True,
+                )
+                raise ReportScheduleSubreportFailedError(
+                    f"Subreport {name} failed: {ex.message}",
+                    exception=ex,
+                    status=ex.status,
+                ) from ex
+        return context
+
+    @staticmethod
+    def _build_section(
+        name: str, result: SubreportResult, source: str | None
+    ) -> SubreportContent:
+        template = result.template
+        if result.viz_type == "chart":
+            return SubreportContent(
+                name=name,
+                kind="chart",
+                data=result.df,
+                images=[
+                    render_chart_png(template.get("title") or name, result.df, template)
+                ],
+                truncated=result.truncated,
+                source=source,
+            )
+        return SubreportContent(
+            name=name,
+            kind="table",
+            data=display_frame(result.df, template.get("columns")),
+            truncated=result.truncated,
+            source=source,
         )
 
     def _send_notification(
