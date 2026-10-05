@@ -419,25 +419,23 @@ def test_subreport_schema(
 def test_prepare_fails_closed_when_binding_changes_tables(
     database: MagicMock, secured: dict[str, MagicMock], mocker: MockerFixture
 ) -> None:
-    from sqlglot import exp as sqlglot_exp
-
     from superset.sql.parse import SQLStatement
 
     def bind(
-        ast: sqlglot_exp.Expression,
+        statement: SQLStatement,
         mapping: Any,
         context: SubreportContext,
         *,
         null_values: bool = False,
-    ) -> sqlglot_exp.Expression:
+    ) -> SQLStatement:
         sql = (
             "SELECT * FROM orders WHERE customer_id = NULL"
             if null_values
             else "SELECT * FROM secrets"
         )
-        return SQLStatement(sql, ENGINE)._parsed  # noqa: SLF001
+        return SQLStatement(sql, ENGINE)
 
-    mocker.patch.object(subreports, "_bind_ast", side_effect=bind)
+    mocker.patch.object(subreports, "_bind_statement", side_effect=bind)
     with pytest.raises(SubreportAccessDeniedError):
         prepare_subreport_sql(
             database,

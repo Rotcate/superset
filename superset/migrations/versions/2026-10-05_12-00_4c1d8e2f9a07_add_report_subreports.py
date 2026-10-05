@@ -48,7 +48,7 @@ PARENT_INDEX_NAME = "ix_report_schedule_parent_schedule_id"
 SUBREPORT_PARENT_INDEX_NAME = "ix_report_subreport_parent_schedule_id"
 
 
-def upgrade():
+def upgrade() -> None:
     """
     Create ``report_subreport`` (ordered SQL subreports owned by a schedule) and
     add the nullable self-referencing ``report_schedule.parent_schedule_id``.
@@ -117,7 +117,7 @@ def upgrade():
     )
 
 
-def downgrade():
+def downgrade() -> None:
     """Drop ``report_subreport`` and ``report_schedule.parent_schedule_id``."""
     drop_fks_for_table(REPORT_SCHEDULE_TABLE, [PARENT_FK_NAME])
     drop_index(REPORT_SCHEDULE_TABLE, PARENT_INDEX_NAME)

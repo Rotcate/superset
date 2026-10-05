@@ -248,7 +248,7 @@ def build_subreports(
 
 
 class CreateSubreportCommand(BaseCommand):
-    def __init__(self, parent_schedule_id: int, data: dict[str, Any]):
+    def __init__(self, parent_schedule_id: int, data: dict[str, Any]) -> None:
         self._parent_schedule_id = parent_schedule_id
         self._properties = data.copy()
         self._parent: ReportSchedule | None = None
@@ -272,7 +272,7 @@ class CreateSubreportCommand(BaseCommand):
 class UpdateSubreportCommand(BaseCommand):
     def __init__(
         self, parent_schedule_id: int, subreport_id: int, data: dict[str, Any]
-    ):
+    ) -> None:
         self._parent_schedule_id = parent_schedule_id
         self._subreport_id = subreport_id
         self._properties = data.copy()
@@ -302,7 +302,7 @@ class UpdateSubreportCommand(BaseCommand):
 
 
 class DeleteSubreportCommand(BaseCommand):
-    def __init__(self, parent_schedule_id: int, subreport_id: int):
+    def __init__(self, parent_schedule_id: int, subreport_id: int) -> None:
         self._parent_schedule_id = parent_schedule_id
         self._subreport_id = subreport_id
         self._model: Subreport | None = None
@@ -330,7 +330,7 @@ class PreviewSubreportCommand(BaseCommand):
     chart data during preview, so their fields must be supplied in ``values``.
     """
 
-    def __init__(self, parent_schedule_id: int, data: dict[str, Any]):
+    def __init__(self, parent_schedule_id: int, data: dict[str, Any]) -> None:
         self._parent_schedule_id = parent_schedule_id
         self._properties = data.copy()
         self._parent: ReportSchedule | None = None

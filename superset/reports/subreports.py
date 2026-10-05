@@ -30,20 +30,17 @@ SQL is never rendered through Jinja.
 
 from __future__ import annotations
 
-import datetime
 import logging
 import math
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Any, Literal, TYPE_CHECKING, TypedDict
 
 import numpy as np
 import pandas as pd
 from flask import current_app as app
 from flask_babel import gettext as _
-from sqlglot import exp
 
 from superset import db, is_feature_enabled, security_manager
 from superset.exceptions import (
@@ -59,6 +56,13 @@ from superset.reports.models import (
     ReportScheduleType,
     Subreport,
     SubreportVizType,
+)
+from superset.sql.parameters import (
+    bind_statement_parameters,
+    get_statement_parameters,
+    SQLParameterError,
+    SQLQueryValidationError,
+    validate_readonly_statement,
 )
 from superset.sql.parse import LimitMethod, SQLScript, SQLStatement, Table
 from superset.utils import json
@@ -219,56 +223,19 @@ def validate_subreport_sql(  # noqa: C901
         raise SubreportInvalidSQLError(
             _("Subreports are not supported for this database engine.")
         )
-    ast = statement._parsed  # pylint: disable=protected-access  # noqa: SLF001
-    if not isinstance(ast, (exp.Select, exp.SetOperation)):
-        raise SubreportInvalidSQLError(_("Subreport SQL must be a SELECT query."))
-    if (
-        statement.is_mutating()
-        or script.has_mutation()
-        or script.changes_default_schema()
-        or ast.find(exp.Into, exp.Command, exp.Lock) is not None
-    ):
+    try:
+        validate_readonly_statement(statement, allow_placeholders=allow_placeholders)
+    except SQLQueryValidationError as ex:
+        raise SubreportInvalidSQLError(str(ex)) from ex
+    if script.has_mutation() or script.changes_default_schema():
         raise SubreportInvalidSQLError(_("Subreport SQL must be read-only."))
-
-    for placeholder in ast.find_all(exp.Placeholder):
-        if not allow_placeholders:
-            raise SubreportInvalidSQLError(
-                _("Subreport SQL contains an unbound parameter.")
-            )
-        _check_placeholder(placeholder)
     return statement
 
 
-def _check_placeholder(placeholder: exp.Placeholder) -> str:
-    name = placeholder.name
-    if not name or name == "?" or not PLACEHOLDER_NAME_RE.match(name):
-        raise SubreportInvalidSQLError(
-            _("Subreport parameters must be named, e.g. :customer_id.")
-        )
-    if placeholder.find_ancestor(exp.Table, exp.TableAlias, exp.Limit, exp.Offset):
-        raise SubreportInvalidSQLError(
-            _(
-                "Parameter :%(name)s can only be used as a value, not as an "
-                "identifier, table or limit.",
-                name=name,
-            )
-        )
-    if isinstance(placeholder.parent, (exp.Column, exp.Dot, exp.Identifier)):
-        raise SubreportInvalidSQLError(
-            _("Parameter :%(name)s can only be used as a value.", name=name)
-        )
-    return name
-
-
 def get_sql_parameters(sql: str, engine: str) -> list[str]:
-    """Return the distinct named placeholders used by ``sql``, in order."""
+    """Return the distinct named placeholders used by SQL, in order."""
     statement = validate_subreport_sql(sql, engine)
-    ast = statement._parsed  # pylint: disable=protected-access  # noqa: SLF001
-    names: list[str] = []
-    for placeholder in ast.find_all(exp.Placeholder):
-        if placeholder.name not in names:
-            names.append(placeholder.name)
-    return names
+    return get_statement_parameters(statement)
 
 
 def parse_field_reference(value: Any) -> str:
@@ -627,85 +594,27 @@ def resolve_context(
 # --------------------------------------------------------------------------- #
 # Parameter binding
 # --------------------------------------------------------------------------- #
-def _to_literal(value: Any) -> exp.Expression:  # noqa: C901
-    if isinstance(value, np.generic):
-        value = value.item()
-    if value is None:
-        return exp.Null()
-    if isinstance(value, bool):
-        return exp.Boolean(this=value)
-    if isinstance(value, int):
-        return exp.Literal.number(value)
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise SubreportParameterError(_("Parameter values must be finite."))
-        return exp.Literal.number(repr(value))
-    if isinstance(value, Decimal):
-        if not value.is_finite():
-            raise SubreportParameterError(_("Parameter values must be finite."))
-        return exp.Literal.number(str(value))
-    if isinstance(value, (pd.Timestamp, datetime.datetime, datetime.date)):
-        return exp.Literal.string(value.isoformat())
-    if isinstance(value, str):
-        if len(value) > MAX_PARAMETER_STRING_LENGTH:
-            raise SubreportParameterError(_("Parameter value is too long."))
-        return exp.Literal.string(value)
-    raise SubreportParameterError(
-        _("Unsupported parameter value type: %(type)s", type=type(value).__name__)
-    )
-
-
-def _bind_ast(
-    ast: exp.Expression,
+def _bind_statement(
+    statement: SQLStatement,
     mapping: Mapping[str, str],
     context: SubreportContext,
     *,
     null_values: bool = False,
-) -> exp.Expression:
-    """Return a copy of ``ast`` with every placeholder replaced by literals."""
-    bound = ast.copy()
-    max_values = _max_parameter_values()
-    for placeholder in list(bound.find_all(exp.Placeholder)):
-        name = _check_placeholder(placeholder)
-        field_name = mapping[name]
-        values = [None] if null_values else context.get(field_name)
-        parent = placeholder.parent
-        in_list = (
-            isinstance(parent, exp.In)
-            and placeholder.arg_key == "expressions"
-            and not parent.args.get("query")
+) -> SQLStatement:
+    """Bind parent context using the shared SQL abstraction."""
+    values = {
+        name: [None] if null_values else context.get(field_name)
+        for name, field_name in mapping.items()
+    }
+    try:
+        return bind_statement_parameters(
+            statement,
+            values,
+            max_values=_max_parameter_values(),
+            max_string_length=MAX_PARAMETER_STRING_LENGTH,
         )
-        if in_list:
-            if len(values) > max_values:
-                raise SubreportParameterError(
-                    _(
-                        "Parent field %(field)s has more than %(max)s values.",
-                        field=field_name,
-                        max=max_values,
-                    )
-                )
-            assert isinstance(parent, exp.In)  # noqa: S101
-            expressions: list[exp.Expression] = []
-            for item in parent.expressions:
-                if item is placeholder:
-                    expressions.extend(_to_literal(value) for value in values)
-                else:
-                    expressions.append(item)
-            parent.set("expressions", expressions)
-            continue
-        if len(values) != 1:
-            raise SubreportParameterError(
-                _(
-                    "Parent field %(field)s has %(count)s values but parameter "
-                    ":%(name)s accepts exactly one. Use it inside IN (:%(name)s) "
-                    "to match multiple values.",
-                    field=field_name,
-                    count=len(values),
-                    name=name,
-                )
-            )
-        placeholder.replace(_to_literal(values[0]))
-    return bound
+    except (SQLParameterError, SQLQueryValidationError) as ex:
+        raise SubreportParameterError(str(ex)) from ex
 
 
 def bind_parameters(
@@ -722,10 +631,9 @@ def bind_parameters(
     :class:`SubreportParameterError` is raised.
     """
     statement = validate_subreport_sql(sql, engine)
-    ast = statement._parsed  # pylint: disable=protected-access  # noqa: SLF001
-    parameters = [p.name for p in ast.find_all(exp.Placeholder)]
+    parameters = get_statement_parameters(statement)
     mapping = validate_param_mapping(param_mapping, parameters)
-    rendered = SQLStatement(ast=_bind_ast(ast, mapping, context), engine=engine)
+    rendered = _bind_statement(statement, mapping, context)
     rendered_sql = rendered.format()
     validate_subreport_sql(rendered_sql, engine, allow_placeholders=False)
     return rendered_sql
@@ -807,19 +715,14 @@ def prepare_subreport_sql(
     """
     engine = database.db_engine_spec.engine
     statement = validate_subreport_sql(sql, engine)
-    ast = statement._parsed  # pylint: disable=protected-access  # noqa: SLF001
-    parameters = [p.name for p in ast.find_all(exp.Placeholder)]
+    parameters = get_statement_parameters(statement)
     mapping = validate_param_mapping(param_mapping, parameters)
 
-    bound_sql = SQLStatement(
-        ast=_bind_ast(ast, mapping, context), engine=engine
-    ).format()
+    bound_sql = _bind_statement(statement, mapping, context).format()
     # Authorize a value-free skeleton: placeholders become NULL so that
     # parameter values never reach the Jinja-aware access check while the set
     # of referenced tables stays identical.
-    authz_sql = SQLStatement(
-        ast=_bind_ast(ast, mapping, context, null_values=True), engine=engine
-    ).format()
+    authz_sql = _bind_statement(statement, mapping, context, null_values=True).format()
 
     catalog = database.get_default_catalog()
     try:
