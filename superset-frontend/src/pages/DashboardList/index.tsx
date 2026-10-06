@@ -120,6 +120,8 @@ export interface Dashboard {
   url: string;
   changed_on_utc?: string;
   description?: string;
+  reviewed?: string | null;
+  poc?: string | null;
   thumbnail_url?: string | null;
   editors?: Subject[];
   // Bare subject ids from a deployment's EXTRA_EDITORS_RESOLVER.
