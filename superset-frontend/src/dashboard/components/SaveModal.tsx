@@ -114,6 +114,8 @@ function SaveModal({
     const data: Record<string, unknown> = {
       certified_by: dashboardInfo.certified_by,
       certification_details: dashboardInfo.certification_details,
+      reviewed: dashboardInfo.reviewed,
+      poc: dashboardInfo.poc,
       css: customCss,
       dashboard_title:
         saveType === SAVE_TYPE_NEWDASHBOARD ? newDashName : dashboardTitle,

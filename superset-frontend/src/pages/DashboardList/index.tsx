@@ -120,6 +120,8 @@ export interface Dashboard {
   url: string;
   changed_on_utc?: string;
   description?: string;
+  reviewed?: string | null;
+  poc?: string | null;
   thumbnail_url?: string | null;
   editors?: Subject[];
   // Bare subject ids from a deployment's EXTRA_EDITORS_RESOLVER.
@@ -173,6 +175,8 @@ const DASHBOARD_COLUMNS_TO_FETCH = [
   'status',
   'certified_by',
   'certification_details',
+  'reviewed',
+  'poc',
   'changed_on',
   ...(isFeatureEnabled(FeatureFlag.EnableViewers)
     ? ['viewers.id', 'viewers.label', 'viewers.img', 'viewers.type']
@@ -297,6 +301,8 @@ function DashboardList(props: DashboardListProps) {
                 url = '',
                 certified_by: certifiedBy = '',
                 certification_details: certificationDetails = '',
+                reviewed = '',
+                poc = '',
                 editors,
                 viewers,
                 tags,
@@ -313,6 +319,8 @@ function DashboardList(props: DashboardListProps) {
                 url,
                 certified_by: certifiedBy,
                 certification_details: certificationDetails,
+                reviewed,
+                poc,
                 editors,
                 viewers,
                 tags,
@@ -611,6 +619,32 @@ function DashboardList(props: DashboardListProps) {
         Header: t('Actions'),
         id: 'actions',
         hidden: !canEdit && !canDelete && !canExport,
+        disableSortBy: true,
+      },
+      {
+        Cell: ({
+          row: {
+            original: { reviewed },
+          },
+        }: {
+          row: { original: { reviewed?: string | null } };
+        }) => <span title={reviewed || ''}>{reviewed || ''}</span>,
+        Header: t('Reviewed'),
+        accessor: 'reviewed',
+        id: 'reviewed',
+        disableSortBy: true,
+      },
+      {
+        Cell: ({
+          row: {
+            original: { poc },
+          },
+        }: {
+          row: { original: { poc?: string | null } };
+        }) => <span title={poc || ''}>{poc || ''}</span>,
+        Header: t('POC'),
+        accessor: 'poc',
+        id: 'poc',
         disableSortBy: true,
       },
       {

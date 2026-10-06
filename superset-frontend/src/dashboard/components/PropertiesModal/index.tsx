@@ -98,6 +98,8 @@ type DashboardInfo = {
   slug: string;
   certifiedBy: string;
   certificationDetails: string;
+  reviewed: string;
+  poc: string;
   isManagedExternally: boolean;
   metadata: Record<string, any>;
   common?: {
@@ -193,6 +195,8 @@ const PropertiesModal = ({
         slug,
         certified_by,
         certification_details,
+        reviewed,
+        poc,
         editors,
         viewers,
         metadata,
@@ -208,6 +212,8 @@ const PropertiesModal = ({
         slug: slug || '',
         certifiedBy: certified_by || '',
         certificationDetails: certification_details || '',
+        reviewed: reviewed || '',
+        poc: poc || '',
         isManagedExternally: is_managed_externally || false,
         css: css || '',
         metadata,
@@ -337,6 +343,8 @@ const PropertiesModal = ({
       slug,
       certifiedBy,
       certificationDetails,
+      reviewed,
+      poc,
     } = form.getFieldsValue(true);
     let currentJsonMetadata = jsonMetadata;
 
@@ -440,6 +448,8 @@ const PropertiesModal = ({
       colorNamespace,
       certifiedBy,
       certificationDetails,
+      reviewed,
+      poc,
       theme: selectedThemeId
         ? themes.find(t => t.id === selectedThemeId)
         : null,
@@ -467,6 +477,8 @@ const PropertiesModal = ({
         certified_by: certifiedBy || null,
         certification_details:
           certifiedBy && certificationDetails ? certificationDetails : null,
+        reviewed: reviewed || null,
+        poc: poc || null,
         css: customCss || null,
         theme_id: selectedThemeId,
         ...morePutProps,

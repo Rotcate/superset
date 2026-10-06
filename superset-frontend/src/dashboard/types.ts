@@ -221,6 +221,8 @@ export type DashboardInfo = {
   last_modified_time: number;
   certified_by?: string;
   certification_details?: string;
+  reviewed?: string;
+  poc?: string;
   tags?: TagType[];
   is_managed_externally?: boolean;
   dash_share_perm?: boolean;
