@@ -250,8 +250,9 @@ password: admin
 ```
 
 To use different credentials, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `docker/.env-local`
-before the first `docker compose up` (the admin user is only created on a fresh metadata
-database). See `docker/.env-local.example`.
+(see `docker/.env-local.example`). Init runs `superset fab create-admin` on every start: a new
+username creates an additional admin user, while changing the password of an existing user has
+no effect (reset it with `superset fab reset-password` or recreate the database volume).
 
 ## 4. Connecting Superset to your local database instance
 
