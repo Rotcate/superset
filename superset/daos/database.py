@@ -41,10 +41,7 @@ from superset.databases.filters import DatabaseFilter
 from superset.databases.ssh_tunnel.models import SSHTunnel
 from superset.extensions import db
 from superset.models.core import Database, DatabaseUserOAuth2Tokens
-from superset.models.dashboard import Dashboard
-from superset.models.slice import Slice
 from superset.models.sql_lab import TabState
-from superset.utils.core import DatasourceType
 from superset.utils.ssh_tunnel import unmask_password_info
 
 logger = logging.getLogger(__name__)
@@ -212,29 +209,17 @@ class DatabaseDAO(BaseDAO[Database]):
 
     @classmethod
     def get_related_objects(cls, database_id: int) -> dict[str, Any]:
+        # pylint: disable=import-outside-toplevel
+        # Deferred: superset.daos.dataset imports superset.views.base, which
+        # imports this module through the GSheets engine spec.
+        from superset.daos.dataset import DatasetDAO
+
         database: Any = cls.find_by_id(database_id)
         datasets = database.tables
         dataset_ids = [dataset.id for dataset in datasets]
-
-        charts = (
-            db.session.query(Slice)
-            .filter(
-                Slice.datasource_id.in_(dataset_ids),
-                Slice.datasource_type == DatasourceType.TABLE,
-            )
-            .all()
-        )
-        chart_ids = [chart.id for chart in charts]
-
-        dashboards = (
-            (
-                db.session.query(Dashboard)
-                .join(Dashboard.slices)
-                .filter(Slice.id.in_(chart_ids))
-            )
-            .distinct()
-            .all()
-        )
+        related = DatasetDAO.get_related_objects_for_datasets(dataset_ids)
+        charts = related["charts"]
+        dashboards = related["dashboards"]
 
         sqllab_tab_states = (
             db.session.query(TabState).filter(TabState.database_id == database_id).all()

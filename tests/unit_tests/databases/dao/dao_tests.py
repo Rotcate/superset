@@ -70,3 +70,93 @@ def test_database_get_ssh_tunnel_not_found(session_with_data: Session) -> None:
     result = database.ssh_tunnel if database else None
 
     assert result is None
+
+
+def test_get_related_objects_preloads_access_check_relationships(
+    session: Session,
+) -> None:
+    """
+    ``related_objects`` runs ``can_access_chart`` / ``can_access_dashboard``
+    on every result, so the relationships those checks read must already be
+    loaded: touching them must not issue one query per chart or dashboard.
+    """
+    from unittest.mock import patch
+
+    from sqlalchemy import event
+
+    from superset.connectors.sqla.models import SqlaTable
+    from superset.daos.database import DatabaseDAO
+    from superset.models.core import Database
+    from superset.models.dashboard import Dashboard
+    from superset.models.slice import Slice
+
+    engine = session.get_bind()
+    Dashboard.metadata.create_all(engine)  # pylint: disable=no-member
+
+    database = Database(database_name="related_db", sqlalchemy_uri="sqlite://")
+    other_database = Database(database_name="other_db", sqlalchemy_uri="sqlite://")
+    datasets = [
+        SqlaTable(table_name=f"related_table_{i}", database=database) for i in range(2)
+    ]
+    other_dataset = SqlaTable(table_name="other_table", database=other_database)
+    session.add_all([database, other_database, *datasets, other_dataset])
+    session.flush()
+
+    charts = [
+        Slice(
+            slice_name=f"chart_{i}",
+            datasource_id=datasets[i % 2].id,
+            datasource_type="table",
+        )
+        for i in range(4)
+    ]
+    other_chart = Slice(
+        slice_name="other_chart",
+        datasource_id=other_dataset.id,
+        datasource_type="table",
+    )
+    dashboards = [
+        Dashboard(dashboard_title="dash_0", slices=[charts[0], charts[1]]),
+        Dashboard(dashboard_title="dash_1", slices=[charts[2], other_chart]),
+        Dashboard(dashboard_title="unrelated", slices=[other_chart]),
+    ]
+    session.add_all([*charts, other_chart, *dashboards])
+    session.flush()
+    session.expire_all()
+
+    with patch.object(DatabaseDAO, "find_by_id", return_value=database):
+        result = DatabaseDAO.get_related_objects(database.id)
+
+    assert sorted(chart.slice_name for chart in result["charts"]) == [
+        "chart_0",
+        "chart_1",
+        "chart_2",
+        "chart_3",
+    ]
+    assert sorted(dash.dashboard_title for dash in result["dashboards"]) == [
+        "dash_0",
+        "dash_1",
+    ]
+
+    statements: list[str] = []
+
+    def record(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        for chart in result["charts"]:
+            list(chart.editors)
+            list(chart.viewers)
+            assert chart.resolved_datasource is not None
+            list(chart.resolved_datasource.editors)
+        for dashboard in result["dashboards"]:
+            list(dashboard.editors)
+            list(dashboard.viewers)
+            for slc in dashboard.slices:
+                assert slc.resolved_datasource is not None
+                list(slc.resolved_datasource.editors)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert statements == []
