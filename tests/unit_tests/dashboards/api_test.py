@@ -47,6 +47,7 @@ def mock_dashboard() -> MagicMock:
     dash.position_json = "{}"
     dash.certified_by = None
     dash.certification_details = None
+    dash.reviewed = None
     dash.changed_by_name = "admin"
     dash.changed_by = MagicMock(id=1, first_name="admin", last_name="user")
     dash.changed_on = None

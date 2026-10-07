@@ -32,7 +32,7 @@ export interface ListViewCardProps {
   imgURL?: string | null;
   imgFallbackURL?: string;
   imgPosition?: BackgroundPosition;
-  description: string;
+  description: ReactNode;
   loading?: boolean;
   titleRight?: ReactNode;
   coverLeft?: ReactNode;

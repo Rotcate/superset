@@ -111,6 +111,7 @@ type DashboardPropertiesUpdate = {
   jsonMetadata?: string;
   certifiedBy?: string;
   certificationDetails?: string;
+  reviewed?: string;
   editors?: Subject[];
   tags?: TagType[];
   theme?: { id: number; theme_name: string; json_data: string } | null;
@@ -132,6 +133,7 @@ type DashboardInfoState = RootState['dashboardInfo'] & {
   last_modified_time?: number;
   certified_by?: string;
   certification_details?: string;
+  reviewed?: string;
   tags?: TagType[];
   metadata: RootState['dashboardInfo']['metadata'] & {
     timed_refresh_immune_slices?: number[];
@@ -247,6 +249,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
   const dashboardInfo = useSelector(
     (state: HeaderRootState) => state.dashboardInfo,
   );
+  const reviewedBaselineRef = useRef(dashboardInfo.reviewed);
   const layout = useSelector(
     (state: HeaderRootState) => state.dashboardLayout.present,
   );
@@ -448,6 +451,11 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     const data = {
       certified_by: dashboardInfo.certified_by,
       certification_details: dashboardInfo.certification_details,
+      // Only send Reviewed when edited in this session, so a stale value
+      // loaded at hydration can't overwrite another editor's newer note.
+      ...(dashboardInfo.reviewed !== reviewedBaselineRef.current && {
+        reviewed: dashboardInfo.reviewed,
+      }),
       css: customCss,
       dashboard_title: dashboardTitle,
       last_modified_time: actualLastModifiedTime,
@@ -499,6 +507,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     customCss,
     dashboardInfo.certification_details,
     dashboardInfo.certified_by,
+    dashboardInfo.reviewed,
     dashboardInfo.common?.conf?.SUPERSET_DASHBOARD_POSITION_DATA_LIMIT,
     dashboardInfo.id,
     dashboardInfo.metadata,
@@ -584,6 +593,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
         metadata: JSON.parse(updates.jsonMetadata || '{}'),
         certified_by: updates.certifiedBy,
         certification_details: updates.certificationDetails,
+        reviewed: updates.reviewed,
         editors: updates.editors,
         tags: updates.tags,
         // Conditional spread: omit `theme` key entirely when undefined
@@ -610,10 +620,11 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
   );
 
   const handleEnterEditMode = useCallback(() => {
+    reviewedBaselineRef.current = dashboardInfo.reviewed;
     toggleEditMode();
     boundActionCreators.clearDashboardHistory?.();
     boundActionCreators.setUnsavedChanges(false);
-  }, [toggleEditMode, boundActionCreators]);
+  }, [toggleEditMode, boundActionCreators, dashboardInfo.reviewed]);
 
   const NavExtension = extensionsRegistry.get('dashboard.nav.right');
 

@@ -16,6 +16,8 @@
 # under the License.
 
 from collections.abc import Iterator
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm.session import Session
@@ -72,3 +74,32 @@ def test_remove_favorite(session_with_data: Session) -> None:
 
     DashboardDAO.remove_favorite(dashboard)
     assert len(DashboardDAO.favorited_ids([dashboard])) == 0
+
+
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({}, "Verified by Jane"),
+        ({"reviewed": "Copy notes"}, "Copy notes"),
+        ({"reviewed": None}, None),
+    ],
+)
+def test_copy_dashboard_reviewed(
+    session_with_data: Session, payload: dict[str, Any], expected: str | None
+) -> None:
+    from superset.daos.dashboard import DashboardDAO
+
+    original = DashboardDAO.find_by_id(100, skip_base_filter=True)
+    assert original is not None
+    original.reviewed = "Verified by Jane"
+
+    with (
+        patch("superset.daos.dashboard.security_manager.is_editor", return_value=True),
+        patch("superset.daos.dashboard.g", MagicMock(user=None)),
+    ):
+        copy = DashboardDAO.copy_dashboard(
+            original,
+            {"dashboard_title": "copy", "json_metadata": "{}", **payload},
+        )
+
+    assert copy.reviewed == expected

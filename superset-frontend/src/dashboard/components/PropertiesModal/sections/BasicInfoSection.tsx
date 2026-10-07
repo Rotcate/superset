@@ -77,12 +77,26 @@ const BasicInfoSection = ({
       <ModalFormField
         label={t('Description')}
         testId="dashboard-description-field"
-        bottomSpacing={false}
       >
         <FormItem name="description" noStyle>
           <Input.TextArea
             placeholder={t('A description for your dashboard')}
             data-test="dashboard-description-input"
+          />
+        </FormItem>
+      </ModalFormField>
+      <ModalFormField
+        label={t('Reviewed')}
+        helperText={t(
+          'Reviewer notes about this dashboard, shown in the Dashboards list.',
+        )}
+        testId="dashboard-reviewed-field"
+        bottomSpacing={false}
+      >
+        <FormItem name="reviewed" noStyle>
+          <Input.TextArea
+            placeholder={t('Any thoughts from reviewing this dashboard')}
+            data-test="dashboard-reviewed-input"
           />
         </FormItem>
       </ModalFormField>

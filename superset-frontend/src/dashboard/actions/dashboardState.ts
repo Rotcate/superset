@@ -450,6 +450,7 @@ export const setDashboardMetadata =
 interface DashboardSaveData extends JsonObject {
   certified_by?: string;
   certification_details?: string;
+  reviewed?: string;
   css?: string;
   dashboard_title?: string;
   editors?: { id: number }[] | number[];
@@ -488,6 +489,7 @@ export function saveDashboardRequest(
     const {
       certified_by,
       certification_details,
+      reviewed,
       css,
       dashboard_title,
       editors,
@@ -514,6 +516,7 @@ export function saveDashboardRequest(
           ? (certification_details ?? '')
           : '',
       }),
+      ...(reviewed !== undefined && { reviewed: reviewed || null }),
       css: css || '',
       dashboard_title: dashboard_title || t('[ untitled dashboard ]'),
       editors: ensureIsArray(editors as JsonObject[]).map((o: JsonObject) =>
@@ -674,6 +677,9 @@ export function saveDashboardRequest(
           : {
               certified_by: cleanedData.certified_by,
               certification_details: cleanedData.certification_details,
+              ...(cleanedData.reviewed !== undefined && {
+                reviewed: cleanedData.reviewed,
+              }),
               css: cleanedData.css,
               dashboard_title: cleanedData.dashboard_title,
               slug: cleanedData.slug,
@@ -764,6 +770,9 @@ export function saveDashboardRequest(
       css: cleanedData.css,
       duplicate_slices: cleanedData.duplicate_slices,
       json_metadata: JSON.stringify(cleanedData.metadata),
+      ...(cleanedData.reviewed !== undefined && {
+        reviewed: cleanedData.reviewed,
+      }),
     };
 
     return SupersetClient.post({

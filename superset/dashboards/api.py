@@ -238,6 +238,7 @@ BASE_LIST_COLUMNS = [
     "url",
     "certified_by",
     "certification_details",
+    "reviewed",
     "changed_by.first_name",
     "changed_by.last_name",
     "changed_by.id",
@@ -461,6 +462,7 @@ class DashboardRestApi(
     add_columns = [
         "certified_by",
         "certification_details",
+        "reviewed",
         "dashboard_title",
         "slug",
         "description",

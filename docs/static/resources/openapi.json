@@ -3763,6 +3763,11 @@
           "json_metadata": {
             "description": "This JSON object is generated dynamically when clicking the save or overwrite button in the dashboard view. It is exposed here for reference and for power users who may want to alter  specific parameters.",
             "type": "string"
+          },
+          "reviewed": {
+            "description": "Free-text reviewer notes about this dashboard",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [
@@ -4066,6 +4071,11 @@
           "published": {
             "type": "boolean"
           },
+          "reviewed": {
+            "description": "Free-text reviewer notes about this dashboard",
+            "nullable": true,
+            "type": "string"
+          },
           "slug": {
             "type": "string"
           },
@@ -4223,6 +4233,10 @@
           "published": {
             "nullable": true,
             "type": "boolean"
+          },
+          "reviewed": {
+            "nullable": true,
+            "type": "string"
           },
           "slug": {
             "maxLength": 255,
@@ -4409,6 +4423,11 @@
             "description": "Determines whether or not this dashboard is visible in the list of all dashboards.",
             "type": "boolean"
           },
+          "reviewed": {
+            "description": "Free-text reviewer notes about this dashboard",
+            "nullable": true,
+            "type": "string"
+          },
           "slug": {
             "description": "Unique identifying part for the web address of the dashboard.",
             "maxLength": 255,
@@ -4495,6 +4514,11 @@
             "description": "Determines whether or not this dashboard is visible in the list of all dashboards.",
             "nullable": true,
             "type": "boolean"
+          },
+          "reviewed": {
+            "description": "Free-text reviewer notes about this dashboard",
+            "nullable": true,
+            "type": "string"
           },
           "slug": {
             "description": "Unique identifying part for the web address of the dashboard.",
