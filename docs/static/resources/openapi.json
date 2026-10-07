@@ -4018,6 +4018,11 @@
             },
             "type": "array"
           },
+          "contact": {
+            "description": "Who to contact about this dashboard (free text)",
+            "nullable": true,
+            "type": "string"
+          },
           "created_by": {
             "$ref": "#/components/schemas/User"
           },
@@ -4193,6 +4198,10 @@
           "changed_on_utc": {
             "readOnly": true
           },
+          "contact": {
+            "nullable": true,
+            "type": "string"
+          },
           "created_by": {
             "$ref": "#/components/schemas/DashboardRestApi.get_list.User1"
           },
@@ -4366,6 +4375,11 @@
             "nullable": true,
             "type": "string"
           },
+          "contact": {
+            "description": "Who to contact about this dashboard (free text)",
+            "nullable": true,
+            "type": "string"
+          },
           "css": {
             "description": "Override CSS for the dashboard.",
             "type": "string"
@@ -4445,6 +4459,11 @@
           },
           "certified_by": {
             "description": "Person or group that has certified this dashboard",
+            "nullable": true,
+            "type": "string"
+          },
+          "contact": {
+            "description": "Who to contact about this dashboard (free text)",
             "nullable": true,
             "type": "string"
           },

@@ -193,3 +193,21 @@ def test_permalink_state_schema_still_rejects_non_string_entries() -> None:
     with pytest.raises(ValidationError) as exc_info:
         schema.load({"activeTabs": ["TAB-abc", 42]})
     assert "activeTabs" in exc_info.value.messages
+
+
+@pytest.mark.parametrize("schema_cls", [DashboardPostSchema, DashboardPutSchema])
+@pytest.mark.parametrize("contact", ["Jane Doe <jane@example.com>", None])
+def test_dashboard_contact_is_accepted(
+    schema_cls: type[DashboardPostSchema] | type[DashboardPutSchema],
+    contact: str | None,
+) -> None:
+    """The free-text ``contact`` field round-trips through POST and PUT."""
+    payload = {"dashboard_title": "test", "contact": contact}
+    assert schema_cls().load(payload)["contact"] == contact
+
+
+def test_dashboard_contact_rejects_non_string() -> None:
+    """``contact`` must be a string."""
+    with pytest.raises(ValidationError) as exc_info:
+        DashboardPutSchema().load({"contact": 123})
+    assert "contact" in exc_info.value.messages
