@@ -249,6 +249,10 @@ username: admin
 password: admin
 ```
 
+To use different credentials, set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `docker/.env-local`
+before the first `docker compose up` (the admin user is only created on a fresh metadata
+database). See `docker/.env-local.example`.
+
 ## 4. Connecting Superset to your local database instance
 
 When running Superset using `docker` or `docker compose` it runs in its own docker container, as if
