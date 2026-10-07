@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 import dateutil.parser
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload, Query
+from sqlalchemy.orm import joinedload, Query, selectinload
 
 from superset.connectors.sqla.models import (
     RLSFilterTables,
@@ -151,11 +151,21 @@ class DatasetDAO(BaseDAO[SqlaTable]):
         Return the charts built on any of the datasets and the dashboards those
         charts appear on. Each chart and dashboard is listed once even if it
         depends on several of the datasets.
+
+        Callers filter the results with ``can_access_chart`` /
+        ``can_access_dashboard``, so the relationships those checks read
+        (editors, viewers, member slices and their datasources) are loaded
+        in batches here instead of lazily per object.
         """
         if not dataset_ids:
             return {"charts": [], "dashboards": []}
         charts = (
             db.session.query(Slice)
+            .options(
+                selectinload(Slice.editors),
+                selectinload(Slice.viewers),
+                selectinload(Slice.table).selectinload(SqlaTable.editors),
+            )
             .filter(
                 Slice.datasource_id.in_(dataset_ids),
                 Slice.datasource_type == DatasourceType.TABLE,
@@ -167,6 +177,13 @@ class DatasetDAO(BaseDAO[SqlaTable]):
         dashboards = (
             (
                 db.session.query(Dashboard)
+                .options(
+                    selectinload(Dashboard.editors),
+                    selectinload(Dashboard.viewers),
+                    selectinload(Dashboard.slices)
+                    .selectinload(Slice.table)
+                    .selectinload(SqlaTable.editors),
+                )
                 .join(Dashboard.slices)
                 .filter(Slice.id.in_(chart_ids))
             )
