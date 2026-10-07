@@ -504,6 +504,9 @@ class DashboardDAO(BaseDAO[Dashboard]):
         dash.viewers = creator_viewers
         dash.dashboard_title = data["dashboard_title"]
         dash.css = data.get("css")
+        dash.reviewed = (
+            data["reviewed"] if "reviewed" in data else original_dash.reviewed
+        )
 
         metadata = json.loads(data["json_metadata"])
         old_to_new_slice_ids: dict[int, int] = {}

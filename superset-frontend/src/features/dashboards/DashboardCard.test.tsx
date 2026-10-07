@@ -39,6 +39,7 @@ const mockDashboard = {
   dashboard_title: 'Sample Dashboard',
   certified_by: 'John Doe',
   certification_details: 'Certified on 2022-01-01',
+  reviewed: 'Checked figures',
   published: true,
   url: '/dashboard/1',
   changed_on_utc: '2024-01-01T00:00:00',
@@ -109,6 +110,12 @@ test('Renders the published status', () => {
 test('Renders the modified date', () => {
   const modifiedDateElement = screen.getByText('Modified 2 days ago');
   expect(modifiedDateElement).toBeInTheDocument();
+});
+
+test('Renders the reviewed note', () => {
+  expect(screen.getByTestId('dashboard-card-reviewed')).toHaveTextContent(
+    'Reviewed: Checked figures',
+  );
 });
 
 test('clicking the thumbnail navigates to the dashboard exactly once', () => {

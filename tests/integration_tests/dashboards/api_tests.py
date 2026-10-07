@@ -3879,6 +3879,37 @@ class TestDashboardApi(ApiEditorsTestCaseMixin, InsertChartMixin, SupersetTestCa
         db.session.commit()
 
     @pytest.mark.usefixtures("load_world_bank_dashboard_with_slices")
+    def test_copy_dashboard_reviewed(self):
+        self.login(ADMIN_USERNAME)
+        original_dash = (
+            db.session.query(Dashboard).filter_by(slug="world_health").first()
+        )
+        original_dash.reviewed = "Verified by Jane"
+        db.session.commit()
+
+        base_data = {
+            "dashboard_title": "copied dash",
+            "json_metadata": json.dumps({"positions": original_dash.position}),
+        }
+        uri = f"api/v1/dashboard/{original_dash.id}/copy/"
+        try:
+            for payload, expected in (
+                ({}, "Verified by Jane"),
+                ({"reviewed": "Copy notes"}, "Copy notes"),
+                ({"reviewed": None}, None),
+            ):
+                rv = self.client.post(uri, json={**base_data, **payload})
+                assert rv.status_code == 200
+                copy_id = json.loads(rv.data.decode("utf-8"))["result"]["id"]
+                dash = db.session.query(Dashboard).filter_by(id=copy_id).one()
+                assert dash.reviewed == expected
+                db.session.delete(dash)
+                db.session.commit()
+        finally:
+            original_dash.reviewed = None
+            db.session.commit()
+
+    @pytest.mark.usefixtures("load_world_bank_dashboard_with_slices")
     def test_copy_dashboard_duplicate_slices(self):
         self.login(ADMIN_USERNAME)
         original_dash = (

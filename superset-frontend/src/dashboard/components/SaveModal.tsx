@@ -120,6 +120,9 @@ function SaveModal({
       duplicate_slices: duplicateSlices,
       last_modified_time: lastModifiedTime,
       editors: dashboardInfo.editors,
+      ...(saveType === SAVE_TYPE_NEWDASHBOARD && {
+        reviewed: dashboardInfo.reviewed,
+      }),
       metadata: {
         ...dashboardInfo?.metadata,
         positions: layout,

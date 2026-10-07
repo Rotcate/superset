@@ -677,7 +677,9 @@ export function saveDashboardRequest(
           : {
               certified_by: cleanedData.certified_by,
               certification_details: cleanedData.certification_details,
-              reviewed: cleanedData.reviewed,
+              ...(cleanedData.reviewed !== undefined && {
+                reviewed: cleanedData.reviewed,
+              }),
               css: cleanedData.css,
               dashboard_title: cleanedData.dashboard_title,
               slug: cleanedData.slug,
@@ -768,6 +770,9 @@ export function saveDashboardRequest(
       css: cleanedData.css,
       duplicate_slices: cleanedData.duplicate_slices,
       json_metadata: JSON.stringify(cleanedData.metadata),
+      ...(cleanedData.reviewed !== undefined && {
+        reviewed: cleanedData.reviewed,
+      }),
     };
 
     return SupersetClient.post({

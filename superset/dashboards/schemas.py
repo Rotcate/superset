@@ -480,6 +480,9 @@ class DashboardCopySchema(Schema):
         validate=validate_json_metadata,
         required=True,
     )
+    reviewed = fields.String(
+        metadata={"description": reviewed_description}, allow_none=True
+    )
     duplicate_slices = fields.Boolean(
         metadata={
             "description": "Whether or not to also copy all charts on the dashboard"

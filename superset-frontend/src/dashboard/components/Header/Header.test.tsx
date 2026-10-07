@@ -579,6 +579,24 @@ test('should save', async () => {
   expect(onSave).toHaveBeenCalledTimes(1);
 });
 
+test('should not resend an unedited reviewed note on save', async () => {
+  const unsavedState = {
+    ...editableState,
+    dashboardState: {
+      ...editableState.dashboardState,
+      hasUnsavedChanges: true,
+    },
+    dashboardInfo: {
+      ...editableState.dashboardInfo,
+      reviewed: 'Initial',
+    },
+  };
+  setup(unsavedState);
+  await userEvent.click(screen.getByText('Save'));
+  expect(onSave).toHaveBeenCalledTimes(1);
+  expect(onSave.mock.calls[0][0]).not.toHaveProperty('reviewed');
+});
+
 test('should block saving and surface the size, limit, and config key when the layout exceeds the limit', async () => {
   const oversizedState = {
     ...editableState,

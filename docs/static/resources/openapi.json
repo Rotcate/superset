@@ -3763,6 +3763,11 @@
           "json_metadata": {
             "description": "This JSON object is generated dynamically when clicking the save or overwrite button in the dashboard view. It is exposed here for reference and for power users who may want to alter  specific parameters.",
             "type": "string"
+          },
+          "reviewed": {
+            "description": "Free-text reviewer notes about this dashboard",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [

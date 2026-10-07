@@ -19,7 +19,7 @@
 import { Link, useHistory } from 'react-router-dom';
 import { t } from '@apache-superset/core/translation';
 import { isFeatureEnabled, FeatureFlag } from '@superset-ui/core';
-import { css } from '@apache-superset/core/theme';
+import { css, styled } from '@apache-superset/core/theme';
 import { CardStyles, isNavigationHandledByLink } from 'src/views/CRUD/utils';
 import {
   FaveStar,
@@ -47,6 +47,12 @@ const menuItemButtonCss = css`
   font: inherit;
   text-align: left;
   cursor: pointer;
+`;
+
+const ReviewedNote = styled.div`
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 interface DashboardCardProps {
@@ -196,7 +202,19 @@ function DashboardCard({
         imgFallbackURL={assetUrl(
           '/static/assets/images/dashboard-card-fallback.svg',
         )}
-        description={t('Modified %s', dashboard.changed_on_delta_humanized)}
+        description={
+          <>
+            <div>{t('Modified %s', dashboard.changed_on_delta_humanized)}</div>
+            {dashboard.reviewed && (
+              <ReviewedNote
+                title={dashboard.reviewed}
+                data-test="dashboard-card-reviewed"
+              >
+                {t('Reviewed: %s', dashboard.reviewed)}
+              </ReviewedNote>
+            )}
+          </>
+        }
         coverLeft={<SubjectPile subjects={dashboard.editors || []} />}
         actions={
           <ListViewCard.Actions

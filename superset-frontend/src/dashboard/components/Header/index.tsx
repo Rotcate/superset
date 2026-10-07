@@ -249,6 +249,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
   const dashboardInfo = useSelector(
     (state: HeaderRootState) => state.dashboardInfo,
   );
+  const reviewedBaselineRef = useRef(dashboardInfo.reviewed);
   const layout = useSelector(
     (state: HeaderRootState) => state.dashboardLayout.present,
   );
@@ -450,7 +451,11 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     const data = {
       certified_by: dashboardInfo.certified_by,
       certification_details: dashboardInfo.certification_details,
-      reviewed: dashboardInfo.reviewed,
+      // Only send Reviewed when edited in this session, so a stale value
+      // loaded at hydration can't overwrite another editor's newer note.
+      ...(dashboardInfo.reviewed !== reviewedBaselineRef.current && {
+        reviewed: dashboardInfo.reviewed,
+      }),
       css: customCss,
       dashboard_title: dashboardTitle,
       last_modified_time: actualLastModifiedTime,
@@ -502,6 +507,7 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
     customCss,
     dashboardInfo.certification_details,
     dashboardInfo.certified_by,
+    dashboardInfo.reviewed,
     dashboardInfo.common?.conf?.SUPERSET_DASHBOARD_POSITION_DATA_LIMIT,
     dashboardInfo.id,
     dashboardInfo.metadata,
@@ -614,10 +620,11 @@ const Header = ({ onOpenMobileFilters }: HeaderComponentProps): JSX.Element => {
   );
 
   const handleEnterEditMode = useCallback(() => {
+    reviewedBaselineRef.current = dashboardInfo.reviewed;
     toggleEditMode();
     boundActionCreators.clearDashboardHistory?.();
     boundActionCreators.setUnsavedChanges(false);
-  }, [toggleEditMode, boundActionCreators]);
+  }, [toggleEditMode, boundActionCreators, dashboardInfo.reviewed]);
 
   const NavExtension = extensionsRegistry.get('dashboard.nav.right');
 

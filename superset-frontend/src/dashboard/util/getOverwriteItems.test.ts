@@ -55,3 +55,17 @@ test('returns diff items', () => {
     },
   ]);
 });
+
+test('returns a reviewed diff when reviewed is in the payload', () => {
+  const prevValue = { css: '', reviewed: 'Approved', json_metadata: '{}' };
+  const nextValue = { css: '', reviewed: 'Initial', json_metadata: '{}' };
+  expect(getOverwriteItems(prevValue, nextValue)).toEqual([
+    { keyPath: 'reviewed', newValue: 'Initial', oldValue: 'Approved' },
+  ]);
+});
+
+test('ignores fields omitted from the payload', () => {
+  const prevValue = { css: '', reviewed: 'Approved', json_metadata: '{}' };
+  const nextValue = { css: '', json_metadata: '{}' };
+  expect(getOverwriteItems(prevValue, nextValue)).toEqual([]);
+});
